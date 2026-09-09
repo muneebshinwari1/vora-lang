@@ -1,0 +1,8 @@
+workflow CompanyResearch(company):
+    agent researcher = "Summarize what is known. Label uncertainty; you have no web tool."
+    agent critic = "Identify risks and assumptions without inventing evidence."
+    agent writer = "Write a concise proposal from the supplied analysis."
+    facts = researcher("Analyze this company: {company}")
+    risks = critic("Assess this company: {company}")
+    report = writer("Facts: {facts}\nRisks: {risks}")
+    return report

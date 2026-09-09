@@ -1,0 +1,30 @@
+{
+  "endpoint": "http://127.0.0.1:18081/v1/chat/completions",
+  "retrievedUtc": "2026-09-08T17:21:44.5757402Z",
+  "selection": "CPU-efficient larger candidate; superiority not yet established",
+  "model": {
+    "sha256": "061b54daade076b5d3362dac252678d17da8c68f07560be70818cace6590cb1a",
+    "url": "https://huggingface.co/Qwen/Qwen3-1.7B-GGUF/resolve/90862c4b9d2787eaed51d12237eafdfe7c5f6077/Qwen3-1.7B-Q8_0.gguf",
+    "repository": "Qwen/Qwen3-1.7B-GGUF",
+    "revision": "90862c4b9d2787eaed51d12237eafdfe7c5f6077",
+    "quantization": "Q8_0",
+    "sizeBytes": 1834426016,
+    "sourceApi": "https://huggingface.co/api/models/Qwen/Qwen3-1.7B-GGUF?blobs=true"
+  },
+  "runtime": {
+    "commit": "ca86fb222e0080d4d102f4390d5c7279dffb3277",
+    "relativeExecutable": "../local-model/llama-b10859/llama-server.exe",
+    "tag": "b10859",
+    "sharedWithBaseline": true
+  },
+  "verification": {
+    "contextTokensPerSlot": 2048,
+    "health": "ok",
+    "criticReliabilityImprovement": "Pending separate comparison",
+    "stopPathExecuted": false,
+    "verifiedUtc": "2026-09-08T17:26:23.6688783Z",
+    "powershell51ColdStartVerified": true,
+    "sha256Matches": true,
+    "powershell51RepeatStartVerified": true
+  }
+}

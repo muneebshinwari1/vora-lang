@@ -1,0 +1,29 @@
+__pycache__/
+*.pyc
+*.egg-info/
+build/
+dist/
+.venv/
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+
+# Local inference artifacts and machine state
+*.gguf
+*.zip
+*.exe
+*.dll
+*.lib
+*.obj
+*.pdb
+*.log
+*.pid
+server-process.json
+*state*.json
+native/outputs/
+native/local-model/llama-*/
+
+# Windows-only convenience shortcuts are machine-specific.
+*.lnk

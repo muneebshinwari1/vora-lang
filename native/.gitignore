@@ -1,0 +1,13 @@
+build/
+dist/
+outputs/
+local-model/*.zip
+local-model/*.gguf
+local-model/runtime/
+local-model/*.log
+local-model/*.pid
+local-model/*state*.json
+local-model-upgrade/*.gguf
+local-model-upgrade/*.log
+local-model-upgrade/server-process.json
+evaluation/vora-benchmark.exe

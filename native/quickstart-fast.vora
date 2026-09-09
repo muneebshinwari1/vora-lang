@@ -1,0 +1,8 @@
+workflow WriteAndReview(input):
+    agent writer = "Write a useful draft in at most 3 short sentences. Follow the user's request."
+    agent critic = "Review the draft. Give one concrete improvement in one short sentence."
+    agent editor = "Apply the critique. Return only the improved text, at most 3 short sentences."
+    draft = writer("Task: {input}")
+    review = critic("Task: {input}\nDraft: {draft}")
+    final = editor("Task: {input}\nDraft: {draft}\nCritique: {review}")
+    return final

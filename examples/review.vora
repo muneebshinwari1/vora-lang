@@ -1,0 +1,8 @@
+workflow Review(input):
+    agent builder = "Propose a practical implementation plan."
+    agent adversary = "Challenge unsupported claims and find failure modes."
+    agent judge = "Revise the plan using the critique. Mark unresolved issues."
+    proposal = builder("Plan this task: {input}")
+    critique = adversary("Critique this proposed plan: {proposal}")
+    decision = judge("Plan: {proposal}\nCritique: {critique}")
+    return decision

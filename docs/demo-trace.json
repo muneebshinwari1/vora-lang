@@ -1,0 +1,57 @@
+[
+  {
+    "event": "step_started",
+    "workflow": "CompanyResearch",
+    "run_id": "9b0dc1c12eaf4cdca8afb909eddd1e93",
+    "duration_ms": 0.066,
+    "step": "facts",
+    "attempt": 1
+  },
+  {
+    "event": "step_completed",
+    "workflow": "CompanyResearch",
+    "run_id": "9b0dc1c12eaf4cdca8afb909eddd1e93",
+    "duration_ms": 0.842,
+    "step": "facts",
+    "attempt": 1
+  },
+  {
+    "event": "step_started",
+    "workflow": "CompanyResearch",
+    "run_id": "9b0dc1c12eaf4cdca8afb909eddd1e93",
+    "duration_ms": 0.044,
+    "step": "risks",
+    "attempt": 1
+  },
+  {
+    "event": "step_completed",
+    "workflow": "CompanyResearch",
+    "run_id": "9b0dc1c12eaf4cdca8afb909eddd1e93",
+    "duration_ms": 0.315,
+    "step": "risks",
+    "attempt": 1
+  },
+  {
+    "event": "step_started",
+    "workflow": "CompanyResearch",
+    "run_id": "9b0dc1c12eaf4cdca8afb909eddd1e93",
+    "duration_ms": 0.06,
+    "step": "report",
+    "attempt": 1
+  },
+  {
+    "event": "step_completed",
+    "workflow": "CompanyResearch",
+    "run_id": "9b0dc1c12eaf4cdca8afb909eddd1e93",
+    "duration_ms": 0.375,
+    "step": "report",
+    "attempt": 1
+  },
+  {
+    "event": "workflow_completed",
+    "workflow": "CompanyResearch",
+    "run_id": "9b0dc1c12eaf4cdca8afb909eddd1e93",
+    "duration_ms": 4386.246,
+    "calls": 3
+  }
+]

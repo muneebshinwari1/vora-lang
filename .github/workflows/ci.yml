@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  native-windows:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: cmake -S native -B native/build -A x64
+      - name: Build
+        run: cmake --build native/build --config Release --parallel 2
+      - name: Native tests
+        run: ctest --test-dir native/build -C Release --output-on-failure
+      - name: HTTP and CLI fixture tests
+        run: python native/tests/test_http_cli.py
+
+  python-prototype:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Unit tests
+        run: python -m unittest discover -s tests -v
