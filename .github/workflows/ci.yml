@@ -11,6 +11,7 @@ permissions:
 jobs:
   native-portable-core:
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
@@ -24,9 +25,9 @@ jobs:
         run: ctest --test-dir native/build --output-on-failure
       - name: Portable CLI smoke test
         run: |
-          ./native/build/vora check native/quickstart-fast.vora
-          ./native/build/vora plan native/quickstart-fast.vora
-          ./native/build/vora run native/quickstart-fast.vora --provider demo --input "CI smoke test"
+          ./native/dist/vora check native/quickstart-fast.vora
+          ./native/dist/vora plan native/quickstart-fast.vora
+          ./native/dist/vora run native/quickstart-fast.vora --provider demo --input "CI smoke test"
 
   native-windows:
     runs-on: windows-2022
