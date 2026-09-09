@@ -9,6 +9,25 @@ permissions:
   contents: read
 
 jobs:
+  native-portable-core:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Configure
+        run: cmake -S native -B native/build -DCMAKE_BUILD_TYPE=Release
+      - name: Build
+        run: cmake --build native/build --parallel 2
+      - name: Native tests
+        run: ctest --test-dir native/build --output-on-failure
+      - name: Portable CLI smoke test
+        run: |
+          ./native/build/vora check native/examples/quickstart-fast.vora
+          ./native/build/vora plan native/examples/quickstart-fast.vora
+          ./native/build/vora run native/examples/quickstart-fast.vora --provider demo --input "CI smoke test"
+
   native-windows:
     runs-on: windows-2022
     steps:

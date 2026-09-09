@@ -1,5 +1,9 @@
 # Vora 0.3 — agent workflow language
 
+The parser, planner, deterministic runtime, and demo provider build on Windows,
+Linux, and macOS. Real local-model inference through the bundled WinHTTP adapter
+currently runs on Windows. See the [Vora 0.3 language specification](SPEC.md).
+
 [![CI](https://github.com/muneebshinwari1/vora-lang/actions/workflows/ci.yml/badge.svg)](https://github.com/muneebshinwari1/vora-lang/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Contributions welcome](https://img.shields.io/badge/contributions-welcome-brightgreen.svg)](CONTRIBUTING.md)

@@ -30,8 +30,10 @@ static std::string read_input(const std::string& path) {
 }
 
 int main(int argc, char** argv) {
+#ifdef _WIN32
     SetConsoleOutputCP(CP_UTF8);
     SetConsoleCP(CP_UTF8);
+#endif
     std::string trace, output;
     try {
         if (argc < 2 || std::string(argv[1]) == "--help") {

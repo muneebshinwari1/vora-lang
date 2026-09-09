@@ -1,12 +1,15 @@
 #pragma once
 #include "vora_runtime.hpp"
+#ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
 #include <winhttp.h>
+#endif
 #include <memory>
 
 namespace vora {
+#ifdef _WIN32
 struct HttpHandle {
     HINTERNET value = nullptr;
     explicit HttpHandle(HINTERNET handle) : value(handle) { if (!value) throw TransientError("HTTP initialization failed."); }
@@ -115,4 +118,18 @@ public:
         return content;
     }
 };
+#else
+class LocalProvider {
+public:
+    LocalProvider(const std::string&, std::string, int = 256, int = 0, bool = false) {
+        throw std::runtime_error(
+            "The local HTTP provider currently requires Windows. "
+            "Use --provider demo for portable workflow execution.");
+    }
+
+    std::string operator()(const std::string&, const std::string&) const {
+        throw std::runtime_error("The local HTTP provider currently requires Windows.");
+    }
+};
+#endif
 }
