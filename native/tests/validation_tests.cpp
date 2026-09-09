@@ -61,6 +61,42 @@ int main() {
         };
         const auto factory_result = vora::run(workflow, "draft", [](const std::string&, const std::string&) { return std::string("unused"); }, options);
         require(factories == 2 && factory_result.events.back()["calls"] == 4, "factory recreated state on retry");
+
+        const auto repaired = vora::parse(
+            "workflow Repair(input):\nagent a = \"role\"\nfinal = a(\"{input}\")\n"
+            "require final sentences 2\nrequire final contains \"free\"\n"
+            "forbid final contains \"$20\"\nrepair final max 2\nreturn final\n");
+        calls = 0;
+        std::vector<std::string> prompts;
+        const auto repaired_result = vora::run(repaired, "notice", [&](const std::string&, const std::string& prompt) {
+            ++calls;
+            prompts.push_back(prompt);
+            if (calls == 1) return std::string("Admission is $20.");
+            return std::string("Admission is free. Everyone is welcome.");
+        }, {1, 0, 3});
+        require(calls == 2 && repaired_result.result == "Admission is free. Everyone is welcome.",
+                "Deterministic repair did not correct output");
+        require(prompts[1].find("VORA DETERMINISTIC VALIDATION FAILED") != std::string::npos &&
+                prompts[1].find("$20") != std::string::npos && prompts[1].find("free") != std::string::npos,
+                "Repair prompt omits exact failed constraints");
+        require(repaired_result.events.at(1).at("event") == "step_repair" &&
+                repaired_result.events.at(1).at("failed_checks") == 3,
+                "Repair event metadata");
+
+        calls = 0;
+        try {
+            vora::run(repaired, "notice", [&](const std::string&, const std::string&) {
+                ++calls;
+                return std::string("Still wrong.");
+            }, {1, 0, 3});
+            throw std::runtime_error("exhausted repair accepted");
+        } catch (const vora::ExecutionError& error) {
+            require(calls == 3, "repair limit was not enforced");
+            require(error.events.back().at("event") == "workflow_failed", "repair failure trace");
+        }
+
+        require(vora::sentence_count("What?! Fine... Done.") == 3,
+                "Terminal punctuation runs must count once");
         std::cout << "PASS: critique schemas, failure blocks editor without retry, valid data flow, preflight and redaction\n";
         return 0;
     } catch (const std::exception& error) {

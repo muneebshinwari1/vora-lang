@@ -1,0 +1,8 @@
+workflow GuardedNotice(input):
+    agent writer = "Write exactly two short sentences using the supplied facts. Include the exact phrase 'admission is free'. Never mention a price. Return only the notice."
+    final = writer("Facts and task: {input}")
+    require final sentences 2
+    require final contains "admission is free"
+    forbid final contains "$20"
+    repair final max 2
+    return final

@@ -70,6 +70,24 @@ return final)VORA");
         require(vora::plan(validated).at("minimum_calls") == 3,
                 "Structural validation does not add model calls");
 
+        const auto guarded = vora::parse(R"VORA(workflow Guarded(input):
+agent writer = "role"
+final = writer("{input}")
+require final sentences 2
+require final contains "required phrase"
+forbid final contains "forbidden phrase"
+repair final max 2
+return final)VORA");
+        require(guarded.validations.size() == 3 && guarded.repairs.size() == 1,
+                "Deterministic rules and repair directive are retained");
+        require(guarded.validations[0].kind == "sentences" && guarded.validations[0].number == 2,
+                "Sentence rule");
+        require(guarded.validations[1].kind == "contains" &&
+                guarded.validations[1].value == "required phrase", "Required text rule");
+        require(guarded.validations[2].kind == "not_contains", "Forbidden text rule");
+        require(vora::plan(guarded).at("repairs").at(0).at("max_attempts") == 2,
+                "Plan exposes repair limit");
+
         const auto strings = vora::parse(R"VORA(workflow Strings(input):
 x = a("JSON: {\"a\": 1}; {input}; line\nnext; \u0041; # literal")
 agent a = "role"
@@ -117,6 +135,13 @@ return y)VORA");
             "x = a(\"hi\")\nreturn x\nvalidate x as critique",
             "x = a(\"hi\")\nvalidate x critique\nreturn x",
             "x = a(\"hi\")\nvalidate x as\nreturn x",
+            "x = a(\"hi\")\nrequire x sentences 0\nreturn x",
+            "x = a(\"hi\")\nrequire x sentences 101\nreturn x",
+            "x = a(\"hi\")\nrequire x contains \"\"\nreturn x",
+            "x = a(\"hi\")\nrepair x max 0\nreturn x",
+            "x = a(\"hi\")\nrepair x max 6\nreturn x",
+            "x = a(\"hi\")\nrepair x max 1\nreturn x",
+            "x = a(\"hi\")\nrequire x contains \"ok\"\nrepair x max 1\nrepair x max 2\nreturn x",
         };
         for (const auto& body : invalid_bodies) {
             rejects(prefix + body);

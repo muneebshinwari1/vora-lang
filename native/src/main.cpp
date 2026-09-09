@@ -35,7 +35,7 @@ int main(int argc, char** argv) {
     std::string trace, output;
     try {
         if (argc < 2 || std::string(argv[1]) == "--help") {
-            std::cout << "Vora 0.2 - native C++ agent workflow engine\n"
+            std::cout << "Vora 0.3 - native C++ agent workflow engine\n"
                       << "vora check FILE\nvora plan FILE [--mermaid]\n"
                       << "vora run FILE --input TEXT [--provider local|demo] [--endpoint URL]\n"
                       << "  Use --input-file FILE instead for saved or multiline text.\n"

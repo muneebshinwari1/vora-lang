@@ -50,6 +50,34 @@ inline bool valid_critique(const std::string& text) {
     return (verdict == "keep") == value["issues"].empty();
 }
 
+inline int sentence_count(const std::string& text) {
+    int count = 0;
+    bool terminal_run = false;
+    for (const unsigned char c : text) {
+        const bool terminal = c == '.' || c == '!' || c == '?';
+        if (terminal && !terminal_run) ++count;
+        terminal_run = terminal;
+    }
+    return count;
+}
+
+inline std::vector<std::string> validation_failures(
+    const Workflow& workflow, const std::string& step, const std::string& response) {
+    std::vector<std::string> failures;
+    for (const auto& rule : workflow.validations) {
+        if (rule.step != step) continue;
+        if (rule.kind == "critique" && !valid_critique(response))
+            failures.push_back("Return exactly the required critique JSON object.");
+        else if (rule.kind == "contains" && response.find(rule.value) == std::string::npos)
+            failures.push_back("Include this exact required text: " + nlohmann::json(rule.value).dump());
+        else if (rule.kind == "not_contains" && response.find(rule.value) != std::string::npos)
+            failures.push_back("Remove this forbidden text: " + nlohmann::json(rule.value).dump());
+        else if (rule.kind == "sentences" && sentence_count(response) != rule.number)
+            failures.push_back("Return exactly " + std::to_string(rule.number) + " sentence(s), counted by terminal punctuation.");
+    }
+    return failures;
+}
+
 inline std::string interpolate(const std::string& source, const std::map<std::string, std::string>& values) {
     static const std::regex placeholder(R"(\{([A-Za-z_][A-Za-z0-9_]*)\})");
     std::string output;
@@ -94,10 +122,22 @@ inline RunResult run(const Workflow& workflow, const std::string& input, Provide
             if (!workflow.agents.count(step.agent)) throw ExecutionError("Unknown agent.");
         }
         if (!names.count(workflow.output)) throw ExecutionError("Undefined return step.");
-        std::set<std::string> validated;
+        std::set<std::pair<std::string, std::string>> validated;
         for (const auto& rule : workflow.validations) {
-            if (!names.count(rule.step) || rule.kind != "critique" || !validated.insert(rule.step).second)
+            const bool supported = rule.kind == "critique" || rule.kind == "contains" ||
+                                   rule.kind == "not_contains" || rule.kind == "sentences";
+            const auto signature = std::make_pair(rule.step, rule.kind + "\n" + rule.value + "\n" + std::to_string(rule.number));
+            if (!names.count(rule.step) || !supported || !validated.insert(signature).second)
                 throw ExecutionError("Invalid or duplicate output validation rule.");
+        }
+        std::map<std::string, int> repair_limits;
+        for (const auto& repair : workflow.repairs) {
+            if (!names.count(repair.step) || repair.max_attempts < 1 || repair.max_attempts > 5 ||
+                !repair_limits.emplace(repair.step, repair.max_attempts).second)
+                throw ExecutionError("Invalid or duplicate repair rule.");
+            if (std::none_of(workflow.validations.begin(), workflow.validations.end(),
+                             [&](const Validation& rule) { return rule.step == repair.step; }))
+                throw ExecutionError("Repair target has no validation rule.");
         }
         std::set<std::string> visited;
         static const std::regex reference(R"(\{([A-Za-z_][A-Za-z0-9_]*)\})");
@@ -133,7 +173,10 @@ inline RunResult run(const Workflow& workflow, const std::string& input, Provide
                 emit("step_failed", {{"step", step.name}, {"attempt", 0}, {"error", "provider_configuration"}});
                 throw ExecutionError("Step '" + step.name + "' provider configuration failed.");
             }
-            for (int attempt = 1; attempt <= options.retries + 1; ++attempt) {
+            int attempt = 0, transient_retries = 0, repairs = 0;
+            std::string current_prompt = prompt;
+            while (true) {
+                ++attempt;
                 {
                     std::lock_guard<std::mutex> guard(call_mutex);
                     if (stopped.load()) throw ExecutionError("Workflow stopped after a sibling failure.");
@@ -146,19 +189,39 @@ inline RunResult run(const Workflow& workflow, const std::string& input, Provide
                 }
                 emit("step_started", {{"step", step.name}, {"attempt", attempt}});
                 try {
-                    auto response = step_provider(workflow.agents.at(step.agent).role, prompt);
+                    auto response = step_provider(workflow.agents.at(step.agent).role, current_prompt);
                     if (!has_text(response)) throw std::runtime_error("Empty provider result");
-                    for (const auto& rule : workflow.validations)
-                        if (rule.step == step.name && !valid_critique(response))
-                            throw ValidationError("Invalid critique schema.");
+                    const auto failures = validation_failures(workflow, step.name, response);
+                    if (!failures.empty()) {
+                        const auto limit = repair_limits.count(step.name) ? repair_limits.at(step.name) : 0;
+                        if (repairs < limit) {
+                            ++repairs;
+                            emit("step_repair", {{"step", step.name}, {"attempt", attempt},
+                                                 {"repair", repairs}, {"max_repairs", limit},
+                                                 {"failed_checks", failures.size()}});
+                            current_prompt = prompt + "\n\nVORA DETERMINISTIC VALIDATION FAILED:\n";
+                            for (const auto& failure : failures) current_prompt += "- " + failure + "\n";
+                            current_prompt += "Return a corrected complete output only.";
+                            continue;
+                        }
+                        const bool critique = std::any_of(
+                            workflow.validations.begin(), workflow.validations.end(),
+                            [&](const Validation& rule) {
+                                return rule.step == step.name && rule.kind == "critique";
+                            });
+                        throw ValidationError(critique ? "critique" : "deterministic");
+                    }
                     emit("step_completed", {{"step", step.name}, {"attempt", attempt}});
                     return response;
-                } catch (const ValidationError&) {
+                } catch (const ValidationError& error) {
                     stopped = true;
                     emit("step_failed", {{"step", step.name}, {"attempt", attempt}, {"error", "validation_failed"}});
-                    throw ExecutionError("Step '" + step.name + "' failed critique validation: expected JSON verdict, issues and instruction. Dependent steps did not run.");
+                    const std::string kind = std::string(error.what()) == "critique"
+                        ? "critique validation" : "deterministic validation";
+                    throw ExecutionError("Step '" + step.name + "' failed " + kind + ". Dependent steps did not run.");
                 } catch (const TransientError&) {
-                    if (attempt <= options.retries && !stopped.load()) {
+                    if (transient_retries < options.retries && !stopped.load()) {
+                        ++transient_retries;
                         emit("step_retry", {{"step", step.name}, {"attempt", attempt}, {"next_attempt", attempt + 1}});
                         std::this_thread::sleep_for(std::chrono::milliseconds(50));
                         continue;
@@ -172,7 +235,6 @@ inline RunResult run(const Workflow& workflow, const std::string& input, Provide
                     throw ExecutionError("Step '" + step.name + "' failed: provider rejected the request or returned invalid output.");
                 }
             }
-            throw ExecutionError("No provider result.");
         };
         while (!pending.empty()) {
             std::vector<std::pair<std::string, std::future<std::string>>> running;

@@ -32,6 +32,13 @@ struct Step {
 struct Validation {
     std::string step;
     std::string kind;
+    std::string value{};
+    int number = 0;
+};
+
+struct Repair {
+    std::string step;
+    int max_attempts = 0;
 };
 
 struct Workflow {
@@ -41,6 +48,7 @@ struct Workflow {
     std::vector<Step> steps;
     std::string output;
     std::vector<Validation> validations{};
+    std::vector<Repair> repairs{};
 };
 
 namespace parser_detail {
@@ -93,6 +101,12 @@ inline Workflow parse(const std::string& source) {
     static const std::regex return_pattern(R"(^return ([A-Za-z_][A-Za-z0-9_]*)$)");
     static const std::regex validation_pattern(
         R"(^validate ([A-Za-z_][A-Za-z0-9_]*) as ([A-Za-z_][A-Za-z0-9_]*)$)");
+    static const std::regex text_rule_pattern(
+        R"(^(require|forbid) ([A-Za-z_][A-Za-z0-9_]*) contains (.+)$)");
+    static const std::regex sentence_rule_pattern(
+        R"(^require ([A-Za-z_][A-Za-z0-9_]*) sentences ([0-9]+)$)");
+    static const std::regex repair_pattern(
+        R"(^repair ([A-Za-z_][A-Za-z0-9_]*) max ([0-9]+)$)");
     static const std::regex placeholder_pattern(R"(\{([A-Za-z_][A-Za-z0-9_]*)\})");
 
     std::vector<std::pair<std::size_t, std::string>> lines;
@@ -119,6 +133,7 @@ inline Workflow parse(const std::string& source) {
     std::set<std::string> symbols{workflow.input_name};
     std::map<std::string, std::size_t> step_lines;
     std::map<std::string, std::size_t> validation_lines;
+    std::map<std::string, std::size_t> repair_lines;
     std::size_t return_line = lines.front().first;
     bool returned = false;
     for (std::size_t i = 1; i < lines.size(); ++i) {
@@ -150,6 +165,23 @@ inline Workflow parse(const std::string& source) {
                 fail(number, "duplicate validation for step '" + target + "'");
             }
             workflow.validations.push_back(Validation{target, kind});
+        } else if (std::regex_match(line, match, text_rule_pattern)) {
+            const auto kind = match[1].str() == "require" ? "contains" : "not_contains";
+            const auto target = match[2].str();
+            const auto value = parser_detail::string_value(match[3].str(), number);
+            workflow.validations.push_back(Validation{target, kind, value, 0});
+        } else if (std::regex_match(line, match, sentence_rule_pattern)) {
+            const auto target = match[1].str();
+            const auto count = std::stoi(match[2].str());
+            if (count < 1 || count > 100) fail(number, "sentence count must be 1..100");
+            workflow.validations.push_back(Validation{target, "sentences", {}, count});
+        } else if (std::regex_match(line, match, repair_pattern)) {
+            const auto target = match[1].str();
+            const auto attempts = std::stoi(match[2].str());
+            if (attempts < 1 || attempts > 5) fail(number, "repair attempts must be 1..5");
+            if (!repair_lines.emplace(target, number).second)
+                fail(number, "duplicate repair for step '" + target + "'");
+            workflow.repairs.push_back(Repair{target, attempts});
         } else if (std::regex_match(line, match, return_pattern)) {
             workflow.output = match[1].str();
             return_line = number;
@@ -163,9 +195,18 @@ inline Workflow parse(const std::string& source) {
     }
     for (const auto& validation : workflow.validations) {
         if (step_lines.count(validation.step) == 0) {
-            fail(validation_lines.at(validation.step),
+            const auto location = validation_lines.count(validation.step)
+                ? validation_lines.at(validation.step) : return_line;
+            fail(location,
                  "undefined validation target '" + validation.step + "'");
         }
+    }
+    for (const auto& repair : workflow.repairs) {
+        if (step_lines.count(repair.step) == 0)
+            fail(repair_lines.at(repair.step), "undefined repair target '" + repair.step + "'");
+        if (std::none_of(workflow.validations.begin(), workflow.validations.end(),
+                         [&](const Validation& rule) { return rule.step == repair.step; }))
+            fail(repair_lines.at(repair.step), "repair target must have a validation rule");
     }
     for (auto& step : workflow.steps) {
         const auto number = step_lines.at(step.name);
@@ -251,8 +292,16 @@ inline nlohmann::json plan(const Workflow& workflow) {
     if (!workflow.validations.empty()) {
         result["validations"] = nlohmann::json::array();
         for (const auto& validation : workflow.validations) {
-            result["validations"].push_back({{"step", validation.step}, {"kind", validation.kind}});
+            nlohmann::json item = {{"step", validation.step}, {"kind", validation.kind}};
+            if (!validation.value.empty()) item["value"] = validation.value;
+            if (validation.number) item["number"] = validation.number;
+            result["validations"].push_back(std::move(item));
         }
+    }
+    if (!workflow.repairs.empty()) {
+        result["repairs"] = nlohmann::json::array();
+        for (const auto& repair : workflow.repairs)
+            result["repairs"].push_back({{"step", repair.step}, {"max_attempts", repair.max_attempts}});
     }
     return result;
 }

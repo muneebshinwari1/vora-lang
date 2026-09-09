@@ -1,10 +1,21 @@
-# Vora — agent workflow language
+# Vora 0.3 — agent workflow language
 
 **The working C++ version is in [`native/`](native/README.md). Double-click [`native/Run Vora.cmd`](native/Run%20Vora.cmd) to enter a task and run the writer → critic → editor workflow using a bundled local AI model.** The native engine is `native/dist/vora.exe`; it does not require Python.
 
 An [experimental review launcher](native/Run%20Vora%20Review.cmd) adds a larger local model, structured critique and native validation. Draft, feedback and final copy are displayed separately. It still makes factual mistakes; see the [independent quality results](native/docs/quality-comparison.md).
 
 The documentation below describes the original Python prototype. Native build, live-model evidence and current limitations are documented in the [native README](native/README.md).
+
+Vora 0.3 adds native deterministic output contracts and bounded automatic repair. A workflow can now require an exact sentence count or phrase, forbid text, and retry a failed step without writing an orchestration loop:
+
+```text
+require final sentences 2
+require final contains "admission is free"
+forbid final contains "$20"
+repair final max 2
+```
+
+See the [native 0.3 documentation](native/README.md#deterministic-output-rules-and-repair) and [runnable guarded example](native/examples/guarded-notice.vora).
 
 ## Original Python prototype
 

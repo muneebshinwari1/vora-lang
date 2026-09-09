@@ -1,4 +1,4 @@
-# Vora Native — working C++ engine
+# Vora Native 0.3 — working C++ engine
 
 ## Start here
 
@@ -39,6 +39,27 @@ Add `validate review as critique` before `return` to require a structured review
 
 This validates structure and verdict consistency, **not factual accuracy or whether the review found every error**. The original unvalidated DSL remains supported; the Python prototype does not implement this native-only directive.
 
+### Deterministic output rules and repair
+
+Vora 0.3 can enforce small, explicit output contracts in native C++ and ask the same agent to repair a failed response a bounded number of times:
+
+```text
+workflow GuardedNotice(input):
+    agent writer = "Write exactly two sentences. Include the exact phrase 'admission is free'."
+    final = writer("Facts and task: {input}")
+    require final sentences 2
+    require final contains "admission is free"
+    forbid final contains "$20"
+    repair final max 2
+    return final
+```
+
+`contains` checks are exact and case-sensitive. `sentences` counts runs of `.`, `!`, or `?` terminal punctuation; it is deliberately a predictable format check rather than a linguistic sentence parser. Counts must be 1–100. A step may have several rules. `repair STEP max N` accepts 1–5 repair attempts and requires at least one validation on that step.
+
+On failure, the engine emits `step_repair`, supplies only the original prompt plus the failed constraints, and calls the same step provider again. Every repair consumes the shared `--max-calls` budget. Transport retries remain a separate mechanism controlled by `--retries`. When the repair allowance ends, `validation_failed` blocks dependent steps. These checks can guarantee their narrow string/format conditions; they do not prove factual accuracy.
+
+The complete runnable source is [`examples/guarded-notice.vora`](examples/guarded-notice.vora).
+
 ## Terminal commands
 
 From this folder, after starting the local model:
@@ -48,6 +69,7 @@ From this folder, after starting the local model:
 .\dist\vora.exe check quickstart.vora
 .\dist\vora.exe plan quickstart.vora --mermaid
 .\dist\vora.exe run quickstart.vora --input "Write a short welcome message for a coding class."
+.\dist\vora.exe run examples\guarded-notice.vora --input "The community event is at Cedar Hall and admission is free."
 ```
 
 To run the full launcher without interactive prompts:
