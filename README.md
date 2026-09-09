@@ -1,5 +1,9 @@
 # Vora 0.3 — agent workflow language
 
+[![CI](https://github.com/muneebshinwari1/vora-lang/actions/workflows/ci.yml/badge.svg)](https://github.com/muneebshinwari1/vora-lang/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Contributions welcome](https://img.shields.io/badge/contributions-welcome-brightgreen.svg)](CONTRIBUTING.md)
+
 **The working C++ version is in [`native/`](native/README.md). Double-click [`native/Run Vora.cmd`](native/Run%20Vora.cmd) to enter a task and run the writer → critic → editor workflow using a bundled local AI model.** The native engine is `native/dist/vora.exe`; it does not require Python.
 
 An [experimental review launcher](native/Run%20Vora%20Review.cmd) adds a larger local model, structured critique and native validation. Draft, feedback and final copy are displayed separately. It still makes factual mistakes; see the [independent quality results](native/docs/quality-comparison.md).
@@ -16,6 +20,14 @@ repair final max 2
 ```
 
 See the [native 0.3 documentation](native/README.md#deterministic-output-rules-and-repair) and [runnable guarded example](native/examples/guarded-notice.vora).
+
+## Contributing
+
+Vora is open source under the MIT License. Bug reports, documentation fixes,
+tests, language-design proposals and focused pull requests are welcome. Read
+[CONTRIBUTING.md](CONTRIBUTING.md), the [Code of Conduct](CODE_OF_CONDUCT.md),
+and [governance](GOVERNANCE.md) before contributing. Please discuss major DSL
+or runtime changes in an issue before investing in a large implementation.
 
 ## Original Python prototype
 
