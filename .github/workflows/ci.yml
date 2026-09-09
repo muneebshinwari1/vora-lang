@@ -24,9 +24,9 @@ jobs:
         run: ctest --test-dir native/build --output-on-failure
       - name: Portable CLI smoke test
         run: |
-          ./native/build/vora check native/examples/quickstart-fast.vora
-          ./native/build/vora plan native/examples/quickstart-fast.vora
-          ./native/build/vora run native/examples/quickstart-fast.vora --provider demo --input "CI smoke test"
+          ./native/build/vora check native/quickstart-fast.vora
+          ./native/build/vora plan native/quickstart-fast.vora
+          ./native/build/vora run native/quickstart-fast.vora --provider demo --input "CI smoke test"
 
   native-windows:
     runs-on: windows-2022
