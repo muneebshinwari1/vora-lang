@@ -131,7 +131,9 @@ model-server RSS endpoints. Retain logs and state for failed runs.
 
 Windows persistence writes and flushes one handle, then retries only transient
 sharing/lock/access-denied failures when replacing the target (maximum 500ms of retry sleeps).
-A longer lock or storage failure fails closed and preserves the prior checkpoint.
+A longer lock fails closed and preserves the prior checkpoint. After other
+storage errors, inspect the checkpoint before resuming; a post-rename error can
+leave a new file with uncertain directory durability.
 Checkpoint errors identify the storage phase and Windows error code without
 including prompt contents. Cloud-sync folders are outside the tested storage
 contract; copy completed artifacts there only after successful job completion.
