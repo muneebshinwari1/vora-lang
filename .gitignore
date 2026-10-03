@@ -36,3 +36,6 @@ native/packages/
 *checkpoint*.json
 *.json.lock/
 *.json.tmp
+
+# Public synthetic compatibility fixtures, never real user state.
+!native/tests/fixtures/*-v1.json

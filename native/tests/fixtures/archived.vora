@@ -1,0 +1,4 @@
+workflow Archived(input):
+agent a = "role"
+x = a("{input}")
+return x

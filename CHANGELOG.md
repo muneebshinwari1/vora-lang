@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.4.0 - 2026-10-03
+
+- Freeze the native 0.4 patch compatibility contract and document preview migration/rollback.
+- Verify archived checkpoint compatibility and clean archive installation in CI.
+- Add a reproducible real-model soak harness with call/result and sampled RSS metrics.
+- Package the deployment runbook and compatibility contract with the engine.
+- Correct timeout fixture accounting: reserved attempts can expire before transmission.
+
 ## 0.4.0-dev — development previews
 
 - Enforce prompt and tool-field limits before interpolation appends, including

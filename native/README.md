@@ -1,4 +1,4 @@
-# Vora Native 0.4.0-dev — C++ agent workflow engine
+# Vora Native 0.4.0 — C++ agent workflow engine
 
 ## Start here
 
@@ -141,7 +141,7 @@ examples/parallel-review.vora demonstrates independent factual and style reviews
 feeding an editor. Inspect with plan --mermaid; --workers 2 permits parallel calls.
 This uses the existing bounded graph runtime.
 
-## Persistent memory and resume (0.4.0-dev)
+## Persistent memory and resume (0.4.0)
 
 Both features are opt-in; no state is written without their CLI flags.
 
@@ -214,7 +214,7 @@ python native/tests/test_state_cli.py
 
 Capability-controlled tool steps are documented in [tools.md](docs/tools.md).
 
-## Controlled tool workflows (0.4.0-dev)
+## Controlled tool workflows (0.4.0)
 
 Five builtins let workflows read workspace files, list directories, search text,
 compute text statistics and select JSON values. Tools are declarative graph steps,

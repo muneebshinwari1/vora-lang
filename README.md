@@ -6,9 +6,9 @@ Write compact declarative workflows for local AI agent orchestration. Vora valid
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Contributions welcome](https://img.shields.io/badge/contributions-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
-**Status: experimental 0.4.0-dev.** Windows, Linux and macOS are covered by CI. The native runtime needs no Python interpreter. Python is development test tooling and powers the [older prototype](PYTHON_PROTOTYPE.md).
+**Native 0.4.0 supports reviewed, trusted local workflows.** Windows, Linux and macOS are covered by CI. The native runtime needs no Python interpreter. Python is development test tooling and powers the [older prototype](PYTHON_PROTOTYPE.md).
 
-Production hardening is tracked against an explicit [deployment contract and release gates](docs/production-readiness.md). Passing CI alone does not promote a preview to a stable production release.
+Production hardening is tracked against an explicit [deployment contract and release gates](docs/production-readiness.md). The [0.4 compatibility contract](docs/compatibility.md) defines upgrade and rollback behavior. Release promotion requires recorded load and package verification.
 
 ## An agent workflow in eight lines
 
@@ -85,7 +85,7 @@ Tools have fixed schemas and explicit workspace grants; they are not an OS sandb
 - [Native engine guide](native/README.md) and [language specification](SPEC.md).
 - [Runnable examples](native/examples), [changelog](CHANGELOG.md) and [roadmap](ROADMAP.md).
 - [Contributor guide](CONTRIBUTING.md), [security policy](SECURITY.md) and [release procedure](docs/releases.md).
-- [Releases](https://github.com/muneebshinwari1/vora-lang/releases): previews are marked prerelease.
+- [Releases](https://github.com/muneebshinwari1/vora-lang/releases): stable native versions and separately marked previews.
 - [CI builds](https://github.com/muneebshinwari1/vora-lang/actions/workflows/ci.yml): successful runs upload platform packages retained for 30 days. GitHub sign-in may be required to download artifacts.
 
 Packages include the engine, examples and docs. Linux/macOS packages require a compatible system libcurl; they are not universal standalone binaries.

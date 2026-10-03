@@ -58,6 +58,8 @@ install(FILES quickstart-fast.vora review.vora examples/guarded-notice.vora exam
         DESTINATION ${CMAKE_INSTALL_DATADIR}/vora/examples)
 install(FILES ../LICENSE ../SPEC.md README.md DESTINATION ${CMAKE_INSTALL_DATADIR}/vora)
 install(FILES ../SECURITY.md DESTINATION ${CMAKE_INSTALL_DATADIR}/vora)
+install(FILES ../docs/compatibility.md ../docs/production-readiness.md
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/vora/docs)
 install(FILES vendor/nlohmann/LICENSE.MIT
         DESTINATION ${CMAKE_INSTALL_DATADIR}/vora/licenses RENAME nlohmann-json-LICENSE.MIT)
 install(DIRECTORY docs DESTINATION ${CMAKE_INSTALL_DATADIR}/vora FILES_MATCHING PATTERN "*.md")

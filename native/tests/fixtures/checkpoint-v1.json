@@ -1,0 +1,45 @@
+{
+  "format": "vora-checkpoint",
+  "version": 1,
+  "identity": {
+    "workflow": {
+      "name": "Archived",
+      "input": "input",
+      "output": "x",
+      "agents": {
+        "a": "role"
+      },
+      "steps": [
+        {
+          "name": "x",
+          "agent": "a",
+          "prompt": "{input}",
+          "dependencies": [],
+          "kind": "agent"
+        }
+      ],
+      "validations": [],
+      "repairs": [],
+      "tools": {}
+    },
+    "input": "task",
+    "provider": "demo",
+    "endpoint": "http://127.0.0.1:18080/v1/chat/completions",
+    "model": "local",
+    "tokens": 256,
+    "reasoning": 0,
+    "retries": 0,
+    "http_timeout_ms": 120000,
+    "max_calls": 20,
+    "memory_enabled": false,
+    "workspace": "__TEST_WORKSPACE__",
+    "allowed_tools": [],
+    "tool_api": 1
+  },
+  "memory_context": {},
+  "outputs": {
+    "x": "archived result"
+  },
+  "calls": 1,
+  "transaction": "archived-v1"
+}

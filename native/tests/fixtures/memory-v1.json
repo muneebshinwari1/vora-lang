@@ -1,0 +1,15 @@
+{
+  "agents": {
+    "a": {
+      "entries": [
+        {
+          "input": "baseline",
+          "output": "[SIMULATED DEMO] role: baseline"
+        }
+      ],
+      "role": "role"
+    }
+  },
+  "format": "vora-memory",
+  "version": 1
+}

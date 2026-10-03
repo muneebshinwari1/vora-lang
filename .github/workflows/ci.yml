@@ -61,6 +61,8 @@ jobs:
           ./native/dist/vora check native/quickstart-fast.vora
           ./native/dist/vora plan native/quickstart-fast.vora
           ./native/dist/vora run native/quickstart-fast.vora --provider demo --input "CI smoke test"
+      - name: Verify clean archive installation
+        run: python native/tests/verify_package.py "native/build/vora-*.tar.gz"
       - name: Upload tested package
         uses: actions/upload-artifact@v7
         with:
@@ -86,6 +88,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Installed CLI smoke check failed' }
           cpack --config native/build/CPackConfig.cmake -C Release -B native/packages
           if ($LASTEXITCODE -ne 0) { throw 'Package generation failed' }
+      - name: Verify clean archive installation
+        run: python native/tests/verify_package.py "native/packages/vora-*.zip"
       - name: Upload tested package
         uses: actions/upload-artifact@v7
         with:

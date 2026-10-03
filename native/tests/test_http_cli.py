@@ -187,7 +187,9 @@ class NativeHTTPTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertLess(time.monotonic() - start, 5)
         self.assertEqual(events[-1]['calls'], 2)
-        self.assertEqual(len(self.requests), 2)
+        # Budget reservations include attempts that time out before transmission.
+        # Under CPU load a 50ms attempt need not reach the fixture server.
+        self.assertLessEqual(len(self.requests), 2)
         time.sleep(0.5)  # Let delayed fixture handlers finish before another test.
 
     def test_invalid_timeout_makes_no_requests(self):

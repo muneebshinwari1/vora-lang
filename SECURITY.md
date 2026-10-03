@@ -2,8 +2,10 @@
 
 ## Supported version
 
-Vora is an experimental local developer preview. Security fixes apply to the
-latest commit on `main`; no stable release line is supported yet.
+Security fixes target the latest native 0.4.x release and `main`. Earlier
+previews and the historical Python prototype do not have a supported stable
+release line. Native 0.4.x supports reviewed trusted local workflows under the
+[deployment contract](docs/production-readiness.md).
 
 ## Reporting a vulnerability
 

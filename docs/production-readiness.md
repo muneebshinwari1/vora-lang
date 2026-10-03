@@ -1,8 +1,9 @@
 # Production readiness
 
-Vora remains a development preview. This document defines the first production
-target and the evidence needed to promote a specific commit and package. A green
-test suite is necessary, but does not establish production readiness on its own.
+Native 0.4.0 is governed by the trusted local deployment contract below and the
+[patch compatibility policy](compatibility.md). Promotion requires the recorded
+checks below for a specific commit and package. A green test suite alone does
+not establish readiness for a new deployment or model.
 
 ## First deployment target
 
@@ -91,8 +92,7 @@ For sanitizer checks on Unix, use a separate Debug build directory with
 CMake-built executable through `VORA_TEST_EXE`. Python is test tooling only.
 
 Release promotion must include a dated report stating which gates passed, the
-tested commit, environment, workload and any remaining blockers. No stable
-production release is declared by this document.
+tested commit, environment, workload and any remaining blockers. Release notes bind those results to an immutable release commit.
 
 ## Hardening review, 2026-10-03
 
@@ -108,3 +108,23 @@ allocation guard so the old failure is detected without allocating a gigabyte.
 
 This is a scoped review, not a guarantee for public multi-tenant deployment.
 Exact-commit CI results and deployment evidence must accompany release promotion.
+
+## Tested hardware profile
+
+The release soak exercises a local Qwen3-0.6B-Q8_0 model, llama.cpp with four
+CPU threads, and writer/critic/editor CLI jobs. Production admission on this
+hardware should allow one active job and use the 120000ms HTTP attempt timeout.
+A two-job/30000ms trial hit timeouts and is not an accepted load profile.
+Set workers to 1 for independent DAG branches until the chosen model/server has
+been benchmarked. Different hardware, models and workflows require their own
+load and quality acceptance; this release does not promise model accuracy.
+
+Reproduce the optional developer soak (Python and psutil are test tooling):
+
+```sh
+python native/tests/soak.py --exe native/dist/vora --workflow native/quickstart-fast.vora --output-dir native/outputs/unique-soak-run --seconds 900 --concurrency 1 --http-timeout-ms 120000
+```
+
+On Windows use native/dist/vora.exe. The output directory must be new. Metrics
+include per-job status/calls, nearest-rank p95 latency, sampled engine RSS and
+model-server RSS endpoints. Retain logs and state for failed runs.

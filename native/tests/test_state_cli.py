@@ -26,6 +26,35 @@ class StateCLI(unittest.TestCase):
         return subprocess.run([str(EXE), 'run', str(self.workflow), '--provider', 'demo',
             '--input', input_text, *map(str, options)], capture_output=True, text=True, timeout=15)
 
+    def test_archived_preview_memory_v1_contract(self):
+        self.workflow.write_text('workflow Archived(input):\nagent a = "role"\nx = a("{input}")\nreturn x\n', encoding='utf-8')
+        self.memory.write_bytes((NATIVE / 'tests/fixtures/memory-v1.json').read_bytes())
+        result = self.run_cli('--memory', self.memory)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('Prior task: baseline', result.stdout)
+        entries = json.loads(self.memory.read_text())['agents']['a']['entries']
+        self.assertEqual(entries[0]['input'], 'baseline')
+        self.assertEqual(entries[-1]['input'], 'task')
+
+    def test_archived_checkpoint_v1_contract(self):
+        self.workflow.write_text('workflow Archived(input):\nagent a = "role"\nx = a("{input}")\nreturn x\n', encoding='utf-8')
+        fixture = json.loads((NATIVE / 'tests/fixtures/checkpoint-v1.json').read_text())
+        fixture['identity']['workspace'] = self.folder.resolve().as_posix()
+        self.checkpoint.write_text(json.dumps(fixture))
+        result = self.run_cli('--workspace', self.folder, '--resume', self.checkpoint, '--trace', self.trace)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('archived result', result.stdout)
+        events = json.loads(self.trace.read_text())
+        self.assertFalse(any(e['event'] == 'step_started' for e in events))
+        self.assertTrue(any(e['event'] == 'step_restored' for e in events))
+        # Earlier previews without the timeout identity are deliberately rejected.
+        del fixture['identity']['http_timeout_ms']
+        self.checkpoint.write_text(json.dumps(fixture))
+        before = self.checkpoint.read_bytes()
+        rejected = self.run_cli('--workspace', self.folder, '--resume', self.checkpoint)
+        self.assertNotEqual(rejected.returncode, 0)
+        self.assertEqual(self.checkpoint.read_bytes(), before)
+
     def test_memory_is_persistent_and_role_scoped(self):
         first = self.run_cli('--memory', self.memory)
         self.assertEqual(first.returncode, 0, first.stderr)
