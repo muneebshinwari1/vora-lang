@@ -11,7 +11,7 @@ With [Scoop](https://scoop.sh) installed:
 ```powershell
 scoop bucket add vora https://github.com/muneebshinwari1/vora-lang
 scoop install vora/vora
-vora --version
+vora --help
 vora run "$(scoop prefix vora)/share/vora/examples/quickstart-fast.vora" --provider demo --input "Hello developers"
 ```
 
@@ -28,7 +28,7 @@ With [Homebrew](https://brew.sh) installed:
 brew tap muneebshinwari1/vora https://github.com/muneebshinwari1/vora-lang
 brew install muneebshinwari1/vora/vora
 brew test muneebshinwari1/vora/vora
-vora --version
+vora --help
 vora run "$(brew --prefix vora)/share/vora/examples/quickstart-fast.vora" --provider demo --input "Hello developers"
 ```
 
@@ -46,7 +46,7 @@ From a checked-out repository, review and run:
 ```sh
 sh scripts/install.sh
 export PATH="$HOME/.local/share/vora/0.4.0-dev.1/bin:$PATH"
-vora --version
+vora --help
 ```
 
 It verifies an embedded SHA256 before extracting, checks the installed engine,
@@ -68,7 +68,7 @@ Docker Desktop runs these Linux images on Windows/macOS.
 
 ```sh
 docker pull ghcr.io/muneebshinwari1/vora-lang:dev
-docker run --rm --network none ghcr.io/muneebshinwari1/vora-lang:dev --version
+docker run --rm --network none ghcr.io/muneebshinwari1/vora-lang:dev --help
 docker run --rm --network none ghcr.io/muneebshinwari1/vora-lang:dev run /opt/vora/share/vora/examples/quickstart-fast.vora --provider demo --input "Hello developers"
 docker run --rm --network none -v "$PWD:/workspace:ro" ghcr.io/muneebshinwari1/vora-lang:dev run /opt/vora/share/vora/examples/file-stats.vora --input README.md --workspace /workspace --allow-tools read_file,text_stats
 ```

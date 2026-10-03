@@ -21,7 +21,7 @@ class Vora < Formula
   end
 
   test do
-    assert_match "0.4.0-dev", shell_output("#{bin}/vora --version")
+    assert_match "0.4.0-dev", shell_output("#{bin}/vora --help")
     assert_match "Valid", shell_output("#{bin}/vora check #{pkgshare}/examples/quickstart-fast.vora")
     (testpath/"stats.vora").write <<~EOS
       workflow Stats(input):

@@ -32,7 +32,7 @@ jobs:
         run: |
           sh -n scripts/install.sh
           VORA_INSTALL_DIR="$RUNNER_TEMP/vora-preview" sh scripts/install.sh
-          "$RUNNER_TEMP/vora-preview/bin/vora" --version
+          "$RUNNER_TEMP/vora-preview/bin/vora" --help
           if VORA_INSTALL_DIR="$RUNNER_TEMP/vora-preview" sh scripts/install.sh; then echo 'Existing install unexpectedly overwritten'; exit 1; fi
   native-portable-core:
     strategy:

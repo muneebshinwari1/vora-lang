@@ -26,7 +26,7 @@ fi
 if [ "$actual" != "$hash" ]; then echo 'Checksum mismatch; nothing installed.' >&2; exit 1; fi
 mkdir "$work/unpack"
 tar -xzf "$work/$asset" -C "$work/unpack" --strip-components=1
-"$work/unpack/bin/vora" --version
+"$work/unpack/bin/vora" --help
 "$work/unpack/bin/vora" check "$work/unpack/share/vora/examples/quickstart-fast.vora"
 mkdir -p "$(dirname "$prefix")"
 # The destination was checked absent; never replace an existing installation.

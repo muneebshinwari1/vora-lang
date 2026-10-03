@@ -38,7 +38,7 @@ jobs:
       - name: Build and test container
         run: |
           docker build --build-arg VORA_REVISION="$REVISION" -t "$IMAGE:sha-$REVISION-$ARCH" .
-          docker run --rm "$IMAGE:sha-$REVISION-$ARCH" --version
+          docker run --rm "$IMAGE:sha-$REVISION-$ARCH" --help
           docker run --rm "$IMAGE:sha-$REVISION-$ARCH" check /opt/vora/share/vora/examples/quickstart-fast.vora
           docker run --rm --network none "$IMAGE:sha-$REVISION-$ARCH" run /opt/vora/share/vora/examples/quickstart-fast.vora --provider demo --input "Container smoke test"
           docker run --rm --network none -v "$PWD:/workspace:ro" "$IMAGE:sha-$REVISION-$ARCH" run /opt/vora/share/vora/examples/file-stats.vora --input README.md --workspace /workspace --allow-tools read_file,text_stats
