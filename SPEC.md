@@ -1,4 +1,4 @@
-# Vora Language Specification 0.3
+# Vora Language Specification 0.4 (development)
 
 Vora is a small declarative language for bounded agent workflows. A program names
 agents, connects them as an acyclic graph, and declares output checks. The native
@@ -15,9 +15,10 @@ implementation is the reference implementation.
 ```ebnf
 program      = header, newline, { statement, newline } ;
 header       = "workflow", name, "(", name, "):" ;
-statement    = agent | step | returns | validate | require | forbid | repair ;
+statement    = agent | tool | step | returns | validate | require | forbid | repair ;
 agent        = "agent", name, "=", string ;
-step         = name, "=", name, "(", string, ")" ;
+tool         = "tool", name, "=", string ;
+step         = name, "=", name, "(", ( string | json_object ), ")" ;
 returns      = "return", name ;
 validate     = "validate", name, "as", "critique" ;
 require      = "require", name, ( "sentences", integer | "contains", string ) ;
@@ -67,3 +68,17 @@ semantics.
 The language version is `major.minor`. Implementations may add providers and
 diagnostics in a patch release. New syntax or changed execution semantics require
 a minor or major version change. Unknown statements must be rejected.
+
+## Tool and persistence extensions (0.4)
+
+Tool aliases select an implementation builtin. Their calls accept flat JSON
+objects with builtin-specific argument schemas, unique keys and string/numeric
+values. Agent calls continue to accept quoted prompt strings. Tool string-value
+placeholders declare dependencies; substitution is serialized as data. Tool steps
+require explicit host capabilities, share execution budgets and cannot repair
+failed outputs automatically. See [tool contracts](native/docs/tools.md).
+
+CLI opt-in agent memory supplies bounded prior successful context. Checkpoints
+restore validated outputs and consumed calls, bind workflow/input/provider/tool
+configuration, and may replay an interrupted unfinished call. These features
+extend runtime behavior rather than add persistence statements to source syntax.

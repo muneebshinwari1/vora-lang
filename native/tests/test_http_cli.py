@@ -58,6 +58,15 @@ class NativeHTTPTests(unittest.TestCase):
             events = json.loads(trace.read_text()) if trace.exists() else []
             return result, events
 
+    def test_tool_output_feeds_real_http_provider(self):
+        source = ('workflow Mixed(input):\ntool stats = "text_stats"\nagent a = "role"\n'
+                  'data = stats({"text":"{input}"})\nfinal = a("Analyze {data}")\nreturn final\n')
+        result, events = self.invoke('--allow-tools', 'text_stats', source=source)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(len(self.requests), 1)
+        self.assertIn('"words":', self.requests[0]['messages'][1]['content'])
+        self.assertEqual(sum(e['event'] == 'tool_completed' for e in events), 1)
+
     def test_real_provider_request_contract_and_input_file(self):
         result, events = self.invoke('--max-tokens', '100')
         self.assertEqual(result.returncode, 0, result.stderr)

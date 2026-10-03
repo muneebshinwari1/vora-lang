@@ -194,4 +194,19 @@ ctest --test-dir native/build -C Release --output-on-failure
 python native/tests/test_state_cli.py
 ```
 
-Autonomous tool execution is not part of this change.
+Planned capability-controlled tool steps are documented in [tools.md](docs/tools.md).
+
+## Controlled tool workflows (0.4.0-dev)
+
+Five builtins let workflows read workspace files, list directories, search text,
+compute text statistics and select JSON values. Tools are declarative graph steps,
+explicitly granted with --allow-tools; filesystem operations also require
+--workspace. See [syntax, contracts and limitations](docs/tools.md).
+
+```powershell
+native/dist/vora.exe run native/examples/file-stats.vora --input README.md --workspace . --allow-tools read_file,text_stats
+```
+
+Run this from the repository root. The file-stats example performs real deterministic
+operations without a model. The workspace-audit example feeds their results into
+an AI reviewer and supports the new memory/checkpoint options.

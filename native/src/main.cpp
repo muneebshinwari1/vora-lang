@@ -1,5 +1,6 @@
 #include "vora_http.hpp"
 #include "vora_state.hpp"
+#include "vora_tools.hpp"
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -45,6 +46,7 @@ int main(int argc, char** argv) {
                       << "  [--model NAME] [--max-tokens 256] [--reasoning-budget 0] [--workers 4] [--retries 0]\n"
                       << "  [--max-calls 20] [--trace FILE.json] [--output FILE.json]\n"
                       << "  [--memory FILE.json] [--checkpoint FILE.json | --resume FILE.json]\n"
+                      << "  [--workspace DIR] [--allow-tools read_file,list_files,search_file,text_stats,json_select]\n"
                       << "Default: REAL local model at http://127.0.0.1:18080/v1/chat/completions\n"
                       << "For interactive use, double-click Run Vora.cmd in the native folder.\n";
             return 0;
@@ -57,7 +59,8 @@ int main(int argc, char** argv) {
         std::string input_path;
         int tokens = 256, reasoning = 0;
         vora::RunOptions limits;
-        std::string memory_path, checkpoint_path;
+        std::string memory_path, checkpoint_path, workspace;
+        std::set<std::string> allowed_tools;
         bool resume = false;
         for (int i = 3; i < argc; ++i) {
             const std::string option = argv[i];
@@ -76,6 +79,16 @@ int main(int argc, char** argv) {
             else if (option == "--workers") limits.workers = integer(value);
             else if (option == "--retries") limits.retries = integer(value);
             else if (option == "--max-calls") limits.max_calls = integer(value);
+            else if (option == "--workspace") workspace = value;
+            else if (option == "--allow-tools") {
+                std::istringstream names(value);
+                std::string name;
+                while (std::getline(names, name, ',')) {
+                    if (name.empty() || !vora::builtin_tools().count(name)) throw std::runtime_error("Unknown tool grant.");
+                    allowed_tools.insert(name);
+                }
+                if (value.empty() || value.back() == ',') throw std::runtime_error("Empty tool grant.");
+            }
             else if (option == "--memory") memory_path = value;
             else if (option == "--checkpoint") {
                 if (!checkpoint_path.empty()) throw std::runtime_error("Specify checkpoint or resume once.");
@@ -106,8 +119,18 @@ int main(int argc, char** argv) {
             return 0;
         }
         if (!has_input) throw std::runtime_error("--input is required.");
+        auto tools = std::make_shared<vora::ToolRegistry>(workspace, allowed_tools);
+        for (const auto& declaration : workflow.tools) {
+            if (!tools->permits(declaration.second)) throw std::runtime_error("Tool needs --allow-tools: " + declaration.second);
+            if ((declaration.second == "read_file" || declaration.second == "list_files" || declaration.second == "search_file") && tools->workspace().empty())
+                throw std::runtime_error("Filesystem tools need --workspace.");
+        }
+        limits.tool_executor = [tools](const auto& tool, const auto& args) { return (*tools)(tool, args); };
+        const bool uses_agents = std::any_of(workflow.steps.begin(), workflow.steps.end(), [](const vora::Step& step) { return step.kind == "agent"; });
         vora::Provider provider;
-        if (provider_name == "local") {
+        if (!uses_agents && (provider_name == "local" || provider_name == "demo")) {
+            std::cerr << "DETERMINISTIC TOOLS: no AI inference.\n";
+        } else if (provider_name == "local") {
             provider = vora::LocalProvider(endpoint, model, tokens, reasoning);
             limits.provider_for_step = [endpoint, model, tokens, reasoning, &workflow](const vora::Step& step) -> vora::Provider {
                 bool critique = false;
@@ -149,7 +172,8 @@ int main(int argc, char** argv) {
         nlohmann::json identity = {{"workflow", vora::workflow_identity(workflow)}, {"input", input},
             {"provider", provider_name}, {"endpoint", endpoint}, {"model", model},
             {"tokens", tokens}, {"reasoning", reasoning}, {"retries", limits.retries},
-            {"max_calls", limits.max_calls}, {"memory_enabled", !memory_path.empty()}};
+            {"max_calls", limits.max_calls}, {"memory_enabled", !memory_path.empty()},
+            {"workspace", tools->workspace()}, {"allowed_tools", allowed_tools}, {"tool_api", 1}};
         nlohmann::json checkpoint;
         if (!checkpoint_path.empty()) {
             checkpoint_lock = std::make_unique<vora::StateLock>(checkpoint_path);

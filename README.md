@@ -108,3 +108,10 @@ Automated tests cover grammar rejection, graph dependencies, actual parallel ove
 The Python prototype tests did not establish real model quality, user productivity, willingness to pay or production reliability. The native build has separate live-inference evidence. There is no public deployment or paid service. Research shows substantial existing alternatives; see [research](docs/research.md) and the proposed [validation plan](docs/validation-plan.md).
 
 Next investment decision: run the same representative workflow against concise Python and an existing agent framework, then conduct a small developer pilot. Add tools, durable execution or a hosted product only when their concrete requirements are established.
+
+## Local 0.4 development
+
+The native development runtime adds opt-in persistent agent memory, resumable
+checkpoints and capability-controlled tool steps. See [tool workflows](native/docs/tools.md)
+and [persistence documentation](native/README.md#local-development-persistent-memory-and-resume-040-dev).
+These changes are awaiting release validation; v0.3.0 remains the existing tag.

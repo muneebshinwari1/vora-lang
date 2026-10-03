@@ -69,11 +69,11 @@ inline nlohmann::json workflow_identity(const Workflow& workflow) {
     nlohmann::json result = {{"name", workflow.name}, {"input", workflow.input_name},
         {"output", workflow.output}, {"agents", nlohmann::json::object()},
         {"steps", nlohmann::json::array()}, {"validations", nlohmann::json::array()},
-        {"repairs", nlohmann::json::array()}};
+        {"repairs", nlohmann::json::array()}, {"tools", workflow.tools}};
     for (const auto& agent : workflow.agents) result["agents"][agent.first] = agent.second.role;
     for (const auto& step : workflow.steps)
         result["steps"].push_back({{"name", step.name}, {"agent", step.agent},
-            {"prompt", step.prompt}, {"dependencies", step.dependencies}});
+            {"prompt", step.prompt}, {"dependencies", step.dependencies}, {"kind", step.kind}});
     for (const auto& rule : workflow.validations)
         result["validations"].push_back({{"step", rule.step}, {"kind", rule.kind},
             {"value", rule.value}, {"number", rule.number}});
@@ -115,6 +115,7 @@ inline std::string bounded_text(const std::string& text, size_t limit) {
 inline void remember(nlohmann::json& memory, const Workflow& workflow, const std::string& input,
                      const std::map<std::string, std::string>& outputs) {
     for (const auto& step : workflow.steps) {
+        if (step.kind == "tool") continue;
         auto& item = memory["agents"][step.agent];
         const auto& role = workflow.agents.at(step.agent).role;
         if (!item.is_object() || item.value("role", "") != role)

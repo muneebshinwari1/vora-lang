@@ -27,12 +27,15 @@ add_test(NAME runtime COMMAND runtime_tests)
 add_test(NAME validation COMMAND validation_tests)
 add_executable(state_tests tests/state_tests.cpp)
 add_test(NAME state COMMAND state_tests)
+add_executable(tool_tests tests/tool_tests.cpp)
+add_test(NAME tools COMMAND tool_tests)
 
 include(GNUInstallDirs)
 install(TARGETS vora RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
-install(FILES quickstart-fast.vora review.vora examples/guarded-notice.vora examples/parallel-review.vora
+install(FILES quickstart-fast.vora review.vora examples/guarded-notice.vora examples/parallel-review.vora examples/workspace-audit.vora examples/file-stats.vora
         DESTINATION ${CMAKE_INSTALL_DATADIR}/vora/examples)
 install(FILES ../LICENSE ../SPEC.md README.md DESTINATION ${CMAKE_INSTALL_DATADIR}/vora)
+install(DIRECTORY docs DESTINATION ${CMAKE_INSTALL_DATADIR}/vora FILES_MATCHING PATTERN "*.md")
 set(CPACK_PACKAGE_NAME "vora")
 set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
 set(CPACK_PACKAGE_VENDOR "Vora contributors")

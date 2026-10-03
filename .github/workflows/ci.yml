@@ -30,6 +30,7 @@ jobs:
         run: |
           python3 native/tests/test_http_cli.py
           python3 native/tests/test_state_cli.py
+          python3 native/tests/test_tools_cli.py
       - name: Install and package
         run: |
           cmake --install native/build --prefix native/stage
@@ -55,6 +56,7 @@ jobs:
         run: |
           python native/tests/test_http_cli.py
           python native/tests/test_state_cli.py
+          python native/tests/test_tools_cli.py
 
   python-prototype:
     runs-on: ubuntu-latest

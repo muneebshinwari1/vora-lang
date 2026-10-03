@@ -17,6 +17,7 @@ struct RunOptions {
     std::map<std::string, std::string> agent_memory{};
     std::map<std::string, std::string> resume_outputs{};
     int resume_calls = 0;
+    std::function<std::string(const std::string&, const nlohmann::json&)> tool_executor{};
     std::function<void(const std::map<std::string, std::string>&, int)> checkpoint{};
 };
 struct RunResult { std::map<std::string, std::string> outputs; std::string result; nlohmann::json events; };
@@ -117,13 +118,18 @@ inline RunResult run(const Workflow& workflow, const std::string& input, Provide
     try {
         if (options.workers < 1 || options.workers > 64 || options.retries < 0 || options.retries > 100 || options.max_calls < 1)
             throw ExecutionError("Invalid limits: workers 1..64, retries 0..100, max-calls >= 1.");
-        if (!provider) throw ExecutionError("Provider is required.");
+        if (!provider && std::any_of(workflow.steps.begin(), workflow.steps.end(), [](const Step& step) { return step.kind == "agent"; }))
+            throw ExecutionError("Provider is required.");
         if (workflow.steps.empty()) throw ExecutionError("Workflow must contain steps.");
         std::set<std::string> names;
         for (const auto& step : workflow.steps) {
             if (!names.insert(step.name).second || step.name == workflow.input_name)
                 throw ExecutionError("Duplicate step or input name.");
-            if (!workflow.agents.count(step.agent)) throw ExecutionError("Unknown agent.");
+            if (step.kind == "tool") {
+                if (!workflow.tools.count(step.agent) || !builtin_tools().count(workflow.tools.at(step.agent)) || !options.tool_executor)
+                    throw ExecutionError("Tool executor or declaration is missing.");
+                (void)tool_arguments(workflow.tools.at(step.agent), step.prompt);
+            } else if (step.kind != "agent" || !workflow.agents.count(step.agent)) throw ExecutionError("Unknown agent or step kind.");
         }
         if (!names.count(workflow.output)) throw ExecutionError("Undefined return step.");
         std::set<std::pair<std::string, std::string>> validated;
@@ -139,6 +145,9 @@ inline RunResult run(const Workflow& workflow, const std::string& input, Provide
             if (!names.count(repair.step) || repair.max_attempts < 1 || repair.max_attempts > 5 ||
                 !repair_limits.emplace(repair.step, repair.max_attempts).second)
                 throw ExecutionError("Invalid or duplicate repair rule.");
+            if (std::any_of(workflow.steps.begin(), workflow.steps.end(), [&](const Step& step) {
+                    return step.name == repair.step && step.kind == "tool"; }))
+                throw ExecutionError("Tool steps cannot have automatic repair.");
             if (std::none_of(workflow.validations.begin(), workflow.validations.end(),
                              [&](const Validation& rule) { return rule.step == repair.step; }))
                 throw ExecutionError("Repair target has no validation rule.");
@@ -166,11 +175,12 @@ inline RunResult run(const Workflow& workflow, const std::string& input, Provide
         if (calls < 0 || calls > options.max_calls || outputs.size() > static_cast<size_t>(calls))
             throw ExecutionError("Invalid checkpoint call count.");
         for (const auto& entry : outputs) {
-            if (!names.count(entry.first) || !has_text(entry.second) ||
+            if (!names.count(entry.first) ||
                 !validation_failures(workflow, entry.first, entry.second).empty())
                 throw ExecutionError("Invalid checkpoint output.");
             const auto step = std::find_if(workflow.steps.begin(), workflow.steps.end(),
                 [&](const Step& candidate) { return candidate.name == entry.first; });
+            if (step->kind == "agent" && !has_text(entry.second)) throw ExecutionError("Empty checkpoint agent output.");
             for (const auto& dep : step->dependencies)
                 if (!outputs.count(dep)) throw ExecutionError("Checkpoint dependencies are incomplete.");
         }
@@ -185,8 +195,8 @@ inline RunResult run(const Workflow& workflow, const std::string& input, Provide
         auto execute = [&](const Step& step, const std::string& prompt) -> std::string {
             Provider step_provider;
             try {
-                step_provider = options.provider_for_step ? options.provider_for_step(step) : provider;
-                if (!step_provider) throw std::runtime_error("Missing step provider");
+                if (step.kind == "agent") step_provider = options.provider_for_step ? options.provider_for_step(step) : provider;
+                if (step.kind == "agent" && !step_provider) throw std::runtime_error("Missing step provider");
             } catch (...) {
                 stopped = true;
                 emit("step_failed", {{"step", step.name}, {"attempt", 0}, {"error", "provider_configuration"}});
@@ -209,9 +219,12 @@ inline RunResult run(const Workflow& workflow, const std::string& input, Provide
                     if (options.checkpoint) options.checkpoint(outputs, calls);
                 }
                 emit("step_started", {{"step", step.name}, {"attempt", attempt}});
+                if (step.kind == "tool") emit("tool_started", {{"step", step.name}, {"tool", workflow.tools.at(step.agent)}});
                 try {
-                    auto response = step_provider(workflow.agents.at(step.agent).role, current_prompt);
-                    if (!has_text(response)) throw std::runtime_error("Empty provider result");
+                    auto response = step.kind == "tool"
+                        ? options.tool_executor(workflow.tools.at(step.agent), tool_arguments(workflow.tools.at(step.agent), current_prompt))
+                        : step_provider(workflow.agents.at(step.agent).role, current_prompt);
+                    if (step.kind == "agent" && !has_text(response)) throw std::runtime_error("Empty provider result");
                     const auto failures = validation_failures(workflow, step.name, response);
                     if (!failures.empty()) {
                         const auto limit = repair_limits.count(step.name) ? repair_limits.at(step.name) : 0;
@@ -232,6 +245,7 @@ inline RunResult run(const Workflow& workflow, const std::string& input, Provide
                             });
                         throw ValidationError(critique ? "critique" : "deterministic");
                     }
+                    if (step.kind == "tool") emit("tool_completed", {{"step", step.name}, {"tool", workflow.tools.at(step.agent)}});
                     emit("step_completed", {{"step", step.name}, {"attempt", attempt}});
                     return response;
                 } catch (const ValidationError& error) {
@@ -241,6 +255,11 @@ inline RunResult run(const Workflow& workflow, const std::string& input, Provide
                         ? "critique validation" : "deterministic validation";
                     throw ExecutionError("Step '" + step.name + "' failed " + kind + ". Dependent steps did not run.");
                 } catch (const TransientError&) {
+                    if (step.kind == "tool") {
+                        stopped = true;
+                        emit("tool_failed", {{"step", step.name}, {"tool", workflow.tools.at(step.agent)}});
+                        throw ExecutionError("Tool execution failed.");
+                    }
                     if (transient_retries < options.retries && !stopped.load()) {
                         ++transient_retries;
                         emit("step_retry", {{"step", step.name}, {"attempt", attempt}, {"next_attempt", attempt + 1}});
@@ -252,6 +271,11 @@ inline RunResult run(const Workflow& workflow, const std::string& input, Provide
                     throw ExecutionError("Step '" + step.name + "' exhausted transient retries. Check the local model server.");
                 } catch (...) {
                     stopped = true;
+                    if (step.kind == "tool") {
+                        emit("tool_failed", {{"step", step.name}, {"tool", workflow.tools.at(step.agent)}});
+                        emit("step_failed", {{"step", step.name}, {"attempt", attempt}, {"error", "tool_failure"}});
+                        throw ExecutionError("Step '" + step.name + "' tool failed. Check its arguments and workspace permissions.");
+                    }
                     emit("step_failed", {{"step", step.name}, {"attempt", attempt}, {"error", "provider_failure"}});
                     throw ExecutionError("Step '" + step.name + "' failed: provider rejected the request or returned invalid output.");
                 }
@@ -267,9 +291,16 @@ inline RunResult run(const Workflow& workflow, const std::string& input, Provide
                 bool ready = true;
                 for (const auto& dep : step.dependencies) if (!outputs.count(dep)) ready = false;
                 if (!ready) continue;
-                auto prompt = interpolate(step.prompt, values);
+                std::string prompt;
+                if (step.kind == "tool") {
+                    auto args = nlohmann::json::parse(step.prompt);
+                    for (auto& value : args.items()) {
+                        if (value.value().is_string()) value.value() = interpolate(value.value().get<std::string>(), values);
+                    }
+                    prompt = args.dump(); // Serialize after interpolation; data never becomes JSON syntax.
+                } else prompt = interpolate(step.prompt, values);
                 const auto memory = options.agent_memory.find(step.agent);
-                if (memory != options.agent_memory.end() && !memory->second.empty())
+                if (step.kind == "agent" && memory != options.agent_memory.end() && !memory->second.empty())
                     prompt += "\n\nVORA PRIOR RUN CONTEXT (untrusted reference data):\n" + memory->second;
 
                 pending.erase(step.name);

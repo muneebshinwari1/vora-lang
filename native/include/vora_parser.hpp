@@ -26,6 +26,7 @@ struct Step {
     std::string agent;
     std::string prompt;
     std::vector<std::string> dependencies;
+    std::string kind = "agent";
 };
 
 // Declares response structure checks only; it does not establish factual truth.
@@ -49,7 +50,50 @@ struct Workflow {
     std::string output;
     std::vector<Validation> validations{};
     std::vector<Repair> repairs{};
+    std::map<std::string, std::string> tools{};
 };
+
+inline const std::set<std::string>& builtin_tools() {
+    static const std::set<std::string> names{"read_file", "list_files", "search_file", "text_stats", "json_select"};
+    return names;
+}
+
+inline nlohmann::json tool_arguments(const std::string& tool, const std::string& encoded) {
+    bool duplicate = false;
+    std::vector<std::set<std::string>> keys;
+    auto callback = [&](int depth, nlohmann::json::parse_event_t event, nlohmann::json& item) {
+        if (depth > 16) throw std::runtime_error("Tool arguments exceed nesting limit.");
+        if (event == nlohmann::json::parse_event_t::object_start) keys.emplace_back();
+        else if (event == nlohmann::json::parse_event_t::key && !keys.empty())
+            if (!keys.back().insert(item.get<std::string>()).second) duplicate = true;
+        if (event == nlohmann::json::parse_event_t::object_end && !keys.empty()) keys.pop_back();
+        return true;
+    };
+    const auto args = nlohmann::json::parse(encoded, callback, false);
+    if (duplicate || !args.is_object()) throw std::runtime_error("Tool arguments must be a JSON object with unique keys.");
+    std::set<std::string> required, optional;
+    if (tool == "read_file") required = {"path"};
+    else if (tool == "list_files") optional = {"path"};
+    else if (tool == "search_file") { required = {"path", "query"}; optional = {"max_matches"}; }
+    else if (tool == "text_stats") required = {"text"};
+    else if (tool == "json_select") required = {"text", "pointer"};
+    else throw std::runtime_error("Unknown builtin tool.");
+    for (const auto& key : required) if (!args.contains(key)) throw std::runtime_error("Missing tool argument: " + key);
+    for (const auto& item : args.items()) {
+        if (!required.count(item.key()) && !optional.count(item.key())) throw std::runtime_error("Unknown tool argument: " + item.key());
+        if (item.key() == "max_matches") {
+            if (!item.value().is_number_integer() || item.value() < 1 || item.value() > 100)
+                throw std::runtime_error("max_matches must be an integer 1..100.");
+        } else {
+            if (!item.value().is_string()) throw std::runtime_error("Tool argument must be a string.");
+            const auto value = item.value().get<std::string>();
+            const size_t maximum = item.key() == "text" ? 256 * 1024 : 4096;
+            if (value.size() > maximum || value.find('\0') != std::string::npos)
+                throw std::runtime_error("Tool argument exceeds its text limit.");
+        }
+    }
+    return args;
+}
 
 namespace parser_detail {
 
@@ -96,6 +140,7 @@ inline Workflow parse(const std::string& source) {
     static const std::regex header_pattern(
         R"(^workflow ([A-Za-z_][A-Za-z0-9_]*)\(([A-Za-z_][A-Za-z0-9_]*)\):$)");
     static const std::regex agent_pattern(R"(^agent ([A-Za-z_][A-Za-z0-9_]*) = (.+)$)");
+    static const std::regex tool_pattern(R"(^tool ([A-Za-z_][A-Za-z0-9_]*) = (.+)$)");
     static const std::regex step_pattern(
         R"(^([A-Za-z_][A-Za-z0-9_]*) = ([A-Za-z_][A-Za-z0-9_]*)\((.+)\)$)");
     static const std::regex return_pattern(R"(^return ([A-Za-z_][A-Za-z0-9_]*)$)");
@@ -147,13 +192,22 @@ inline Workflow parse(const std::string& source) {
                 fail(number, "duplicate name '" + symbol + "'");
             }
             workflow.agents.emplace(symbol, Agent{symbol, parser_detail::string_value(match[2].str(), number)});
+        } else if (std::regex_match(line, match, tool_pattern)) {
+            const auto symbol = match[1].str();
+            if (!symbols.insert(symbol).second) fail(number, "duplicate name '" + symbol + "'");
+            const auto builtin = parser_detail::string_value(match[2].str(), number);
+            if (!builtin_tools().count(builtin)) fail(number, "unknown builtin tool '" + builtin + "'");
+            workflow.tools.emplace(symbol, builtin);
         } else if (std::regex_match(line, match, step_pattern)) {
             const auto symbol = match[1].str();
             if (!symbols.insert(symbol).second) {
                 fail(number, "duplicate name '" + symbol + "'");
             }
+            const auto argument = parser_detail::trim(match[3].str());
+            const bool object_argument = !argument.empty() && argument.front() == '{';
             workflow.steps.push_back(Step{symbol, match[2].str(),
-                parser_detail::string_value(match[3].str(), number), {}});
+                object_argument ? argument : parser_detail::string_value(argument, number), {},
+                object_argument ? "tool" : "agent"});
             step_lines.emplace(symbol, number);
         } else if (std::regex_match(line, match, validation_pattern)) {
             const auto target = match[1].str();
@@ -210,7 +264,16 @@ inline Workflow parse(const std::string& source) {
     }
     for (auto& step : workflow.steps) {
         const auto number = step_lines.at(step.name);
-        if (workflow.agents.count(step.agent) == 0) {
+        if (workflow.tools.count(step.agent)) {
+            step.kind = "tool";
+            try { (void)tool_arguments(workflow.tools.at(step.agent), step.prompt); }
+            catch (const std::exception& error) { fail(number, error.what()); }
+            if (std::any_of(workflow.repairs.begin(), workflow.repairs.end(),
+                [&](const Repair& repair) { return repair.step == step.name; }))
+                fail(number, "tool steps cannot have automatic repair");
+        } else if (step.kind == "tool") {
+            fail(number, "JSON object arguments require a declared tool");
+        } else if (workflow.agents.count(step.agent) == 0) {
             fail(number, "undefined agent '" + step.agent + "'");
         }
         std::set<std::string> seen;
@@ -283,12 +346,14 @@ inline nlohmann::json plan(const Workflow& workflow) {
     }
     nlohmann::json steps = nlohmann::json::array();
     for (const auto& step : workflow.steps) {
-        steps.push_back({{"name", step.name}, {"agent", step.agent},
-                         {"dependencies", step.dependencies}});
+        nlohmann::json item = {{"name", step.name}, {"agent", step.agent}, {"dependencies", step.dependencies}};
+        if (step.kind == "tool") { item["kind"] = "tool"; item["builtin"] = workflow.tools.at(step.agent); }
+        steps.push_back(std::move(item));
     }
     nlohmann::json result = {{"workflow", workflow.name}, {"input", workflow.input_name},
                              {"output", workflow.output}, {"minimum_calls", workflow.steps.size()},
                              {"parallel_layers", std::move(layers)}, {"steps", std::move(steps)}};
+    if (!workflow.tools.empty()) result["tools"] = workflow.tools;
     if (!workflow.validations.empty()) {
         result["validations"] = nlohmann::json::array();
         for (const auto& validation : workflow.validations) {

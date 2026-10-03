@@ -1,0 +1,6 @@
+workflow FileStats(input):
+    tool reader = "read_file"
+    tool stats = "text_stats"
+    document = reader({"path": "{input}"})
+    counts = stats({"text": "{document}"})
+    return counts

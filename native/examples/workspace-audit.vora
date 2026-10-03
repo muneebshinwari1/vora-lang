@@ -1,0 +1,8 @@
+workflow WorkspaceAudit(input):
+    tool reader = "read_file"
+    tool stats = "text_stats"
+    agent reviewer = "Review the supplied document. Cite only supplied evidence and identify three concrete next steps."
+    document = reader({"path": "{input}"})
+    counts = stats({"text": "{document}"})
+    report = reviewer("Document: {document}\nCounts: {counts}")
+    return report
