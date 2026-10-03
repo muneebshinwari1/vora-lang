@@ -1,5 +1,15 @@
 # Native release procedure
 
+## Local 0.5 development hold
+
+The 0.5 graph milestone is developed locally with its code, examples, tests and
+documentation. Public distribution manifests remain pinned to stable 0.4.0.
+No push, tag, GitHub release or package publication is part of this local phase.
+After the maintainer explicitly requests promotion, review the accumulated changes,
+run exact-candidate cross-platform/sanitizer and deployment gates, and publish a
+development prerelease before considering stable 0.5 support. Never repoint 0.4
+assets or hashes to an unreleased development binary.
+
 ## Historical development previews
 
 Historical development previews identify themselves as `0.4.0-dev`. Use preview tags such as `v0.4.0-dev.1`; leave historical tags unchanged. Native `0.4.0` promotion is described below.

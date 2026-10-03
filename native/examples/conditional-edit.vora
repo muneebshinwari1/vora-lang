@@ -1,0 +1,9 @@
+workflow ConditionalEdit(input):
+    agent writer = "Write a brief notice following the task. Return only the notice."
+    agent critic = "Check the draft against the task. Return only a JSON object. For a compliant draft use {\"verdict\":\"keep\",\"issues\":[],\"instruction\":\"Keep the draft.\"}. Otherwise use verdict revise with a concrete issue and correction. Never include issues with keep."
+    agent editor = "Apply the supplied critique. Return only the corrected notice."
+    draft = writer("Task: {input}")
+    critique = critic("Task: {input}\nDraft: {draft}")
+    validate critique as critique
+    final = editor("Task: {input}\nDraft: {draft}\nCritique: {critique}") when critique verdict "revise" else draft
+    return final

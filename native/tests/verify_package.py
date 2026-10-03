@@ -21,9 +21,13 @@ with tempfile.TemporaryDirectory(prefix='vora-package-') as tmp:
         r=subprocess.run([str(exe),*map(str,args)],capture_output=True,text=True,timeout=30,cwd=tmp)
         if r.returncode:raise RuntimeError(r.stderr)
         return r
-    if 'Vora 0.4.0 -' not in cli('--help').stdout:raise RuntimeError('Wrong package version')
+    if 'Vora 0.5.0-dev -' not in cli('--help').stdout:raise RuntimeError('Wrong package version')
     example=installed/'share/vora/examples/quickstart-fast.vora'
     cli('check',example);cli('plan',example)
+    for name in ('bounded-review.vora','conditional-edit.vora','parallel-research.vora'):
+        cli('check',installed/'share/vora/examples'/name)
+    cli('run',installed/'share/vora/examples/parallel-research.vora','--provider','demo','--input','package graph smoke','--workers','2')
+    if not (installed/'share/vora/docs/agent-graphs.md').is_file():raise RuntimeError('Missing graph deployment guide')
     checkpoint=root/'state.json';output=root/'output.json';trace=root/'trace.json'
     cli('run',example,'--provider','demo','--input','package smoke','--checkpoint',checkpoint,'--output',output)
     first=json.loads(output.read_text())['result']

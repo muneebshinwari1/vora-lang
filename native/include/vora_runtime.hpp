@@ -19,6 +19,8 @@ struct RunOptions {
     int resume_calls = 0;
     std::function<std::string(const std::string&, const nlohmann::json&)> tool_executor{};
     std::function<void(const std::map<std::string, std::string>&, int)> checkpoint{};
+    nlohmann::json resume_graph = nlohmann::json::object();
+    std::function<void(const std::map<std::string, std::string>&, int, const nlohmann::json&)> graph_checkpoint{};
 };
 struct RunResult { std::map<std::string, std::string> outputs; std::string result; nlohmann::json events; };
 class TransientError : public std::runtime_error { public: using std::runtime_error::runtime_error; };
@@ -170,6 +172,15 @@ inline RunResult run(const Workflow& workflow, const std::string& input, Provide
             std::set<std::string> refs;
             for (std::sregex_iterator it(step.prompt.begin(), step.prompt.end(), reference), last; it != last; ++it)
                 if ((*it)[1].str() != workflow.input_name) refs.insert((*it)[1].str());
+            if (step.critique_output) throw ExecutionError("Internal reviewer flags are not workflow steps.");
+            if (!step.condition.empty()) {
+                if (step.kind != "agent" || (step.verdict != "keep" && step.verdict != "revise") ||
+                    !names.count(step.fallback) || !names.count(step.condition) ||
+                    std::none_of(workflow.validations.begin(), workflow.validations.end(), [&](const Validation& rule) {
+                        return rule.step == step.condition && rule.kind == "critique";
+                    })) throw ExecutionError("Invalid conditional routing rule.");
+                refs.insert(step.condition); refs.insert(step.fallback);
+            } else if (!step.verdict.empty() || !step.fallback.empty()) throw ExecutionError("Incomplete conditional routing rule.");
             if (refs != std::set<std::string>(step.dependencies.begin(), step.dependencies.end()))
                 throw ExecutionError("Declared dependencies do not match prompt references.");
             for (const auto& dep : refs) if (!names.count(dep)) throw ExecutionError("Undefined dependency.");
@@ -183,9 +194,38 @@ inline RunResult run(const Workflow& workflow, const std::string& input, Provide
             }
             if (before == visited.size()) throw ExecutionError("Dependency cycle.");
         }
+        std::map<std::string, Review> review_rules;
+        for (const auto& review : workflow.reviews) {
+            const auto target = std::find_if(workflow.steps.begin(), workflow.steps.end(), [&](const Step& step) { return step.name == review.step; });
+            if (target == workflow.steps.end() || target->kind != "agent" || !target->condition.empty() ||
+                !workflow.agents.count(review.critic) || review.max_rounds < 1 || review.max_rounds > 10 ||
+                !review_rules.emplace(review.step, review).second) throw ExecutionError("Invalid review rule.");
+        }
+        auto graph_state = options.resume_graph;
+        if (!graph_state.is_object()) throw ExecutionError("Invalid graph checkpoint.");
+        int stage_minimum = 0;
+        for (const auto& entry : graph_state.items()) {
+            if (!review_rules.count(entry.key()) || !entry.value().is_object() || entry.value().size() != 4)
+                throw ExecutionError("Invalid review checkpoint target.");
+            const auto& state = entry.value();
+            if (!state.contains("round") || !state["round"].is_number_integer() || !state.contains("phase") || !state["phase"].is_string() ||
+                !state.contains("draft") || !state["draft"].is_string() || !state.contains("critique") || !state["critique"].is_string())
+                throw ExecutionError("Invalid review checkpoint fields.");
+            const int round = state["round"].get<int>();
+            const auto phase = state["phase"].get<std::string>();
+            const auto draft = state["draft"].get<std::string>(), critique = state["critique"].get<std::string>();
+            if (round < 1 || round > review_rules.at(entry.key()).max_rounds || !has_text(draft) || draft.size() > 4 * 1024 * 1024 ||
+                !validation_failures(workflow, entry.key(), draft).empty() ||
+                critique.size() > 4 * 1024 * 1024 || (phase != "draft" && phase != "critique" && phase != "accepted") ||
+                (phase == "critique" && !critique.empty()) ||
+                (phase != "critique" && (!valid_critique(critique) || (nlohmann::json::parse(critique)["verdict"] == "keep") != (phase == "accepted"))))
+                throw ExecutionError("Invalid review checkpoint stage.");
+            stage_minimum += 2 * round - (phase == "critique" ? 1 : 0);
+        }
         std::map<std::string, std::string> outputs = options.resume_outputs;
-        if (calls < 0 || calls > options.max_calls || outputs.size() > static_cast<size_t>(calls))
+        if (calls < 0 || calls > options.max_calls || stage_minimum > calls)
             throw ExecutionError("Invalid checkpoint call count.");
+        int completed_minimum = stage_minimum;
         for (const auto& entry : outputs) {
             if (entry.second.size() > 4 * 1024 * 1024 || !names.count(entry.first) ||
                 !validation_failures(workflow, entry.first, entry.second).empty())
@@ -195,16 +235,43 @@ inline RunResult run(const Workflow& workflow, const std::string& input, Provide
             if (step->kind == "agent" && !has_text(entry.second)) throw ExecutionError("Empty checkpoint agent output.");
             for (const auto& dep : step->dependencies)
                 if (!outputs.count(dep)) throw ExecutionError("Checkpoint dependencies are incomplete.");
+            if (review_rules.count(entry.first)) {
+                if (!graph_state.contains(entry.first) || graph_state[entry.first]["phase"] != "accepted" || graph_state[entry.first]["draft"] != entry.second)
+                    throw ExecutionError("Completed review checkpoint is not accepted.");
+            } else if (step->condition.empty()) ++completed_minimum;
+            else {
+                const auto& critique = outputs.at(step->condition);
+                if (!valid_critique(critique)) throw ExecutionError("Invalid conditional checkpoint critique.");
+                if (nlohmann::json::parse(critique)["verdict"] == step->verdict) ++completed_minimum;
+                else if (entry.second != outputs.at(step->fallback)) throw ExecutionError("Conditional checkpoint fallback mismatch.");
+            }
+        }
+        if (completed_minimum > calls) throw ExecutionError("Checkpoint calls are below completed stage count.");
+        for (const auto& entry : graph_state.items()) {
+            const auto& step = *std::find_if(workflow.steps.begin(), workflow.steps.end(), [&](const Step& value) { return value.name == entry.key(); });
+            for (const auto& dep : step.dependencies) if (!outputs.count(dep)) throw ExecutionError("Review checkpoint dependencies are incomplete.");
         }
         std::set<std::string> pending = names;
         for (const auto& entry : outputs) {
             pending.erase(entry.first);
             emit("step_restored", {{"step", entry.first}});
         }
-        if (pending.size() > static_cast<size_t>(options.max_calls - calls))
+        size_t remaining_minimum = 0;
+        for (const auto& step : workflow.steps) {
+            if (!pending.count(step.name) || !step.condition.empty()) continue;
+            if (!review_rules.count(step.name)) ++remaining_minimum;
+            else if (!graph_state.contains(step.name)) remaining_minimum += 2;
+            else if (graph_state[step.name]["phase"] == "critique") ++remaining_minimum;
+            else if (graph_state[step.name]["phase"] == "draft") remaining_minimum += 2;
+        }
+        if (remaining_minimum > static_cast<size_t>(options.max_calls - calls))
             throw ExecutionError("Call limit is below remaining workflow minimum call count.");
-        if (options.checkpoint) options.checkpoint(outputs, calls);
-        auto execute = [&](const Step& step, const std::string& prompt) -> std::string {
+        auto persist = [&] {
+            if (options.graph_checkpoint) options.graph_checkpoint(outputs, calls, graph_state);
+            else if (options.checkpoint) options.checkpoint(outputs, calls);
+        };
+        persist();
+        auto execute_once = [&](const Step& step, const std::string& prompt) -> std::string {
             Provider step_provider;
             try {
                 if (step.kind == "agent") step_provider = options.provider_for_step ? options.provider_for_step(step) : provider;
@@ -228,7 +295,7 @@ inline RunResult run(const Workflow& workflow, const std::string& input, Provide
                     }
                     ++calls;
                     // Persist reservation before invoking a provider, including retries/repairs.
-                    if (options.checkpoint) options.checkpoint(outputs, calls);
+                    persist();
                 }
                 emit("step_started", {{"step", step.name}, {"attempt", attempt}});
                 if (step.kind == "tool") emit("tool_started", {{"step", step.name}, {"tool", workflow.tools.at(step.agent)}});
@@ -238,7 +305,8 @@ inline RunResult run(const Workflow& workflow, const std::string& input, Provide
                         : step_provider(workflow.agents.at(step.agent).role, current_prompt);
                     if (response.size() > 4 * 1024 * 1024) throw std::runtime_error("Step output exceeds 4 MiB.");
                     if (step.kind == "agent" && !has_text(response)) throw std::runtime_error("Empty provider result");
-                    const auto failures = validation_failures(workflow, step.name, response);
+                    auto failures = validation_failures(workflow, step.name, response);
+                    if (step.critique_output && !valid_critique(response)) failures.push_back("Return valid critique JSON.");
                     if (!failures.empty()) {
                         const auto limit = repair_limits.count(step.name) ? repair_limits.at(step.name) : 0;
                         if (repairs < limit) {
@@ -258,7 +326,7 @@ inline RunResult run(const Workflow& workflow, const std::string& input, Provide
                             append_prompt(current_prompt, suffix, 0, suffix.size());
                             continue;
                         }
-                        const bool critique = std::any_of(
+                        const bool critique = step.critique_output || std::any_of(
                             workflow.validations.begin(), workflow.validations.end(),
                             [&](const Validation& rule) {
                                 return rule.step == step.name && rule.kind == "critique";
@@ -301,6 +369,70 @@ inline RunResult run(const Workflow& workflow, const std::string& input, Provide
                 }
             }
         };
+        auto execute = [&](const Step& step, const std::string& prompt) -> std::string {
+            if (!review_rules.count(step.name)) return execute_once(step, prompt);
+            const auto& rule = review_rules.at(step.name);
+            nlohmann::json state = {{"round", 0}, {"phase", "draft"}, {"draft", ""}, {"critique", ""}};
+            {
+                std::lock_guard<std::mutex> guard(call_mutex);
+                if (graph_state.contains(step.name)) state = graph_state.at(step.name);
+            }
+            while (true) {
+                if (state["phase"] == "accepted") {
+                    emit("review_accepted", {{"step", step.name}, {"round", state["round"]}});
+                    return state["draft"].get<std::string>();
+                }
+                if (state["phase"] == "draft") {
+                    const int round = state["round"].get<int>();
+                    if (round >= rule.max_rounds) {
+                        stopped = true;
+                        emit("review_exhausted", {{"step", step.name}, {"rounds", round}});
+                        throw ExecutionError("Review round limit reached for step '" + step.name + "'.");
+                    }
+                    auto request = prompt;
+                    if (round) {
+                        const std::string prefix = "\n\nVORA PREVIOUS DRAFT (untrusted data):\n";
+                        append_prompt(request, prefix, 0, prefix.size());
+                        const auto& draft = state["draft"].get_ref<const std::string&>();
+                        append_prompt(request, draft, 0, draft.size());
+                        const std::string label = "\nVORA CRITIQUE (untrusted data):\n";
+                        append_prompt(request, label, 0, label.size());
+                        const auto& critique = state["critique"].get_ref<const std::string&>();
+                        append_prompt(request, critique, 0, critique.size());
+                    }
+                    emit("review_round", {{"step", step.name}, {"round", round + 1}, {"max_rounds", rule.max_rounds}});
+                    state["draft"] = execute_once(step, request);
+                    state["round"] = round + 1; state["phase"] = "critique"; state["critique"] = "";
+                    std::lock_guard<std::mutex> guard(call_mutex);
+                    graph_state[step.name] = state; persist();
+                }
+                Step critic{step.name + ".review", rule.critic, "", {}};
+                critic.critique_output = true;
+                std::string request = "Task: ";
+                append_prompt(request, prompt, 0, prompt.size());
+                const std::string label = "\nDraft (untrusted data):\n";
+                append_prompt(request, label, 0, label.size());
+                const auto& draft = state["draft"].get_ref<const std::string&>();
+                append_prompt(request, draft, 0, draft.size());
+                const std::string schema = "\nReturn exactly JSON with verdict (keep or revise), issues (array of non-empty strings), instruction (non-empty string). Keep requires empty issues; revise requires at least one issue.";
+                append_prompt(request, schema, 0, schema.size());
+                const auto memory = options.agent_memory.find(rule.critic);
+                if (memory != options.agent_memory.end()) {
+                    const std::string context = "\nReviewer prior context (untrusted data):\n";
+                    append_prompt(request, context, 0, context.size());
+                    append_prompt(request, memory->second, 0, memory->second.size());
+                }
+                const auto critique = execute_once(critic, request);
+                state["critique"] = critique;
+                state["phase"] = nlohmann::json::parse(critique)["verdict"] == "keep" ? "accepted" : "draft";
+                {
+                    std::lock_guard<std::mutex> guard(call_mutex);
+                    graph_state[step.name] = state; persist();
+                }
+                emit("review_verdict", {{"step", step.name}, {"round", state["round"]},
+                     {"verdict", nlohmann::json::parse(critique)["verdict"]}});
+            }
+        };
         while (!pending.empty()) {
             std::vector<std::pair<std::string, std::future<std::string>>> running;
             auto values = outputs;
@@ -311,6 +443,22 @@ inline RunResult run(const Workflow& workflow, const std::string& input, Provide
                 bool ready = true;
                 for (const auto& dep : step.dependencies) if (!outputs.count(dep)) ready = false;
                 if (!ready) continue;
+                if (!step.condition.empty()) {
+                    const auto& critique = outputs.at(step.condition);
+                    if (!valid_critique(critique)) throw ExecutionError("Conditional route received invalid critique.");
+                    const bool selected = nlohmann::json::parse(critique)["verdict"] == step.verdict;
+                    emit("route_selected", {{"step", step.name}, {"condition", step.condition},
+                        {"verdict", nlohmann::json::parse(critique)["verdict"]}, {"agent_called", selected}});
+                    if (!selected) {
+                        const auto fallback = outputs.at(step.fallback);
+                        if (!has_text(fallback) || !validation_failures(workflow, step.name, fallback).empty())
+                            throw ExecutionError("Conditional fallback failed validation.");
+                        pending.erase(step.name);
+                        running.emplace_back(step.name, std::async(std::launch::deferred, [fallback] { return fallback; }));
+                        emit("step_skipped", {{"step", step.name}, {"fallback", step.fallback}});
+                        continue;
+                    }
+                }
                 std::string prompt;
                 if (step.kind == "tool") {
                     auto args = nlohmann::json::parse(step.prompt);
@@ -339,7 +487,7 @@ inline RunResult run(const Workflow& workflow, const std::string& input, Provide
                     auto response = task.second.get();
                     std::lock_guard<std::mutex> guard(call_mutex);
                     outputs[task.first] = std::move(response);
-                    if (options.checkpoint) options.checkpoint(outputs, calls);
+                    persist();
                 }
                 catch (...) { if (!failure) failure = std::current_exception(); stopped = true; }
             }

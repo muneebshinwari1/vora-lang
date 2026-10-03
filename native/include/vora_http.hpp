@@ -86,7 +86,7 @@ public:
 #ifdef _WIN32
         const std::wstring wide_path(path_.begin(), path_.end());
         const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms_);
-        HttpHandle session(WinHttpOpen(L"VoraNative/0.4", WINHTTP_ACCESS_TYPE_NO_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0));
+        HttpHandle session(WinHttpOpen(L"VoraNative/0.5-dev", WINHTTP_ACCESS_TYPE_NO_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0));
         if (!WinHttpSetTimeouts(session.value, timeout_ms_, timeout_ms_, timeout_ms_, timeout_ms_)) throw TransientError("HTTP timeout setup failed.");
         HttpHandle connection(WinHttpConnect(session.value, L"127.0.0.1", port_, 0));
         HttpHandle request(WinHttpOpenRequest(connection.value, L"POST", wide_path.c_str(), nullptr, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, 0));

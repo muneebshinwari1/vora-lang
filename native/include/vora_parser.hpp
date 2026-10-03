@@ -28,6 +28,8 @@ struct Step {
     std::string prompt;
     std::vector<std::string> dependencies;
     std::string kind = "agent";
+    std::string condition{}, verdict{}, fallback{};
+    bool critique_output = false; // Internal reviewer call, never source-controlled.
 };
 
 // Declares response structure checks only; it does not establish factual truth.
@@ -43,6 +45,8 @@ struct Repair {
     int max_attempts = 0;
 };
 
+struct Review { std::string step, critic; int max_rounds = 0; };
+
 struct Workflow {
     std::string name;
     std::string input_name;
@@ -52,6 +56,7 @@ struct Workflow {
     std::vector<Validation> validations{};
     std::vector<Repair> repairs{};
     std::map<std::string, std::string> tools{};
+    std::vector<Review> reviews{};
 };
 
 inline const std::set<std::string>& builtin_tools() {
@@ -161,6 +166,10 @@ inline Workflow parse(const std::string& source) {
     static const std::regex repair_pattern(
         R"(^repair ([A-Za-z_][A-Za-z0-9_]*) max ([0-9]+)$)");
     static const std::regex placeholder_pattern(R"(\{([A-Za-z_][A-Za-z0-9_]*)\})");
+    static const std::regex conditional_pattern(
+        R"(^([A-Za-z_][A-Za-z0-9_]*) = ([A-Za-z_][A-Za-z0-9_]*)\((.+)\) when ([A-Za-z_][A-Za-z0-9_]*) verdict ("keep"|"revise") else ([A-Za-z_][A-Za-z0-9_]*)$)");
+    static const std::regex review_pattern(
+        R"(^review ([A-Za-z_][A-Za-z0-9_]*) with ([A-Za-z_][A-Za-z0-9_]*) max ([0-9]{1,2})$)");
 
     std::vector<std::pair<std::size_t, std::string>> lines;
     std::istringstream input(source);
@@ -208,6 +217,19 @@ inline Workflow parse(const std::string& source) {
             const auto builtin = parser_detail::string_value(match[2].str(), number);
             if (!builtin_tools().count(builtin)) fail(number, "unknown builtin tool '" + builtin + "'");
             workflow.tools.emplace(symbol, builtin);
+        } else if (std::regex_match(line, match, conditional_pattern)) {
+            const auto symbol = match[1].str();
+            if (!symbols.insert(symbol).second) fail(number, "duplicate name '" + symbol + "'");
+            Step step{symbol, match[2].str(), parser_detail::string_value(match[3].str(), number), {}};
+            step.condition = match[4].str();
+            step.verdict = parser_detail::string_value(match[5].str(), number);
+            step.fallback = match[6].str();
+            workflow.steps.push_back(std::move(step));
+            step_lines.emplace(symbol, number);
+        } else if (std::regex_match(line, match, review_pattern)) {
+            const int rounds = std::stoi(match[3].str());
+            if (rounds < 1 || rounds > 10) fail(number, "review rounds must be 1..10");
+            workflow.reviews.push_back({match[1].str(), match[2].str(), rounds});
         } else if (std::regex_match(line, match, step_pattern)) {
             const auto symbol = match[1].str();
             if (!symbols.insert(symbol).second) {
@@ -298,6 +320,23 @@ inline Workflow parse(const std::string& source) {
             }
             step.dependencies.push_back(symbol);
         }
+        if (!step.condition.empty()) {
+            if (step.kind != "agent") fail(number, "conditional calls require an agent");
+            for (const auto& dep : {step.condition, step.fallback}) {
+                if (!step_lines.count(dep)) fail(number, "undefined conditional dependency '" + dep + "'");
+                if (seen.insert(dep).second) step.dependencies.push_back(dep);
+            }
+            if (std::none_of(workflow.validations.begin(), workflow.validations.end(), [&](const Validation& rule) {
+                    return rule.step == step.condition && rule.kind == "critique";
+                })) fail(number, "conditional verdict requires validate TARGET as critique");
+        }
+    }
+    std::set<std::string> reviewed;
+    for (const auto& review : workflow.reviews) {
+        if (!step_lines.count(review.step)) fail(return_line, "undefined review target");
+        const auto& step = *std::find_if(workflow.steps.begin(), workflow.steps.end(), [&](const Step& value) { return value.name == review.step; });
+        if (!workflow.agents.count(review.critic) || step.kind != "agent" || !step.condition.empty() ||
+            !reviewed.insert(review.step).second) fail(step_lines.at(review.step), "review requires an unconditional agent step and unique declared critic rule");
     }
     std::set<std::string> visited;
     while (visited.size() < workflow.steps.size()) {
@@ -349,6 +388,7 @@ inline nlohmann::json plan(const Workflow& workflow) {
     for (const auto& step : workflow.steps) {
         nlohmann::json item = {{"name", step.name}, {"agent", step.agent}, {"dependencies", step.dependencies}};
         if (step.kind == "tool") { item["kind"] = "tool"; item["builtin"] = workflow.tools.at(step.agent); }
+        if (!step.condition.empty()) item["condition"] = {{"step", step.condition}, {"verdict", step.verdict}, {"fallback", step.fallback}};
         steps.push_back(std::move(item));
     }
     nlohmann::json result = {{"workflow", workflow.name}, {"input", workflow.input_name},
@@ -369,6 +409,17 @@ inline nlohmann::json plan(const Workflow& workflow) {
         for (const auto& repair : workflow.repairs)
             result["repairs"].push_back({{"step", repair.step}, {"max_attempts", repair.max_attempts}});
     }
+    if (!workflow.reviews.empty()) {
+        result["reviews"] = nlohmann::json::array();
+        for (const auto& review : workflow.reviews)
+            result["reviews"].push_back({{"step", review.step}, {"critic", review.critic}, {"max_rounds", review.max_rounds}});
+    }
+    size_t minimum = 0;
+    for (const auto& step : workflow.steps) {
+        if (!step.condition.empty()) continue;
+        minimum += 1 + static_cast<size_t>(std::any_of(workflow.reviews.begin(), workflow.reviews.end(), [&](const Review& review) { return review.step == step.name; }));
+    }
+    result["minimum_calls"] = minimum;
     return result;
 }
 

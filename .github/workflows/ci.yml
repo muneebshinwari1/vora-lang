@@ -131,6 +131,6 @@ jobs:
       - name: Verify candidate container
         run: |
           docker build -t vora-candidate .
-          docker run --rm vora-candidate --help | grep 'Vora 0.4.0 -'
+          docker run --rm vora-candidate --help | grep 'Vora 0.5.0-dev -'
           docker run --rm --network none vora-candidate run /opt/vora/share/vora/examples/quickstart-fast.vora --provider demo --input "Container acceptance"
           docker run --rm --network none -v "$PWD:/workspace:ro" vora-candidate run /opt/vora/share/vora/examples/file-stats.vora --input README.md --workspace /workspace --allow-tools read_file,text_stats

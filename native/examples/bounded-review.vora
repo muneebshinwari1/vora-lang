@@ -1,0 +1,6 @@
+workflow BoundedReview(input):
+    agent writer = "Write one brief notice following the task. Apply any supplied critique. Return only the notice."
+    agent critic = "Check the draft against the task. Return only a JSON object. If it follows the task, use {\"verdict\":\"keep\",\"issues\":[],\"instruction\":\"Keep the draft.\"}. Otherwise use verdict revise, put a concrete problem in issues, and give a correction in instruction. Never put issues in a keep verdict."
+    final = writer("Task: {input}")
+    review final with critic max 3
+    return final

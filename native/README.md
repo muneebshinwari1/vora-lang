@@ -1,4 +1,8 @@
-# Vora Native 0.4.0 — C++ agent workflow engine
+# Vora Native 0.5 development — C++ agent workflow engine
+
+The working source adds [conditional calls and bounded review graphs](../docs/agent-graphs.md).
+Published stable packages remain 0.4.0. Use a separate build/state directory for
+development; 0.5 features have not been promoted to production support.
 
 ## Start here
 

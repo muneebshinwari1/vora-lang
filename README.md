@@ -10,6 +10,12 @@ Write compact declarative workflows for local AI agent orchestration. Vora valid
 
 Production hardening is tracked against an explicit [deployment contract and release gates](docs/production-readiness.md). The [0.4 compatibility contract](docs/compatibility.md) defines upgrade and rollback behavior. Release promotion requires recorded load and package verification.
 
+**Local 0.5 development:** the native source adds conditional calls and bounded
+writer–critic review loops with durable stage recovery. See [agent graphs](docs/agent-graphs.md).
+Local evidence is recorded in [0.5 verification](docs/graphs-0.5-validation.md).
+The published installers and Docker command below still install stable 0.4.0;
+they do not include the local development features.
+
 ## An agent workflow in eight lines
 
 ```text

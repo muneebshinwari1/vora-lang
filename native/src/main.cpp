@@ -35,7 +35,7 @@ int main(int argc, char** argv) {
     bool trace_path_validated = false;
     try {
         if (argc < 2 || std::string(argv[1]) == "--help") {
-            std::cout << "Vora 0.4.0 - native C++ agent workflow engine\n"
+            std::cout << "Vora 0.5.0-dev - native C++ agent workflow engine\n"
                       << "vora check FILE\nvora plan FILE [--mermaid]\n"
                       << "vora run FILE --input TEXT [--provider local|demo] [--endpoint URL]\n"
                       << "  Use --input-file FILE instead for saved or multiline text.\n"
@@ -130,7 +130,7 @@ int main(int argc, char** argv) {
         } else if (provider_name == "local") {
             provider = vora::LocalProvider(endpoint, model, tokens, reasoning, false, http_timeout_ms);
             limits.provider_for_step = [endpoint, model, tokens, reasoning, http_timeout_ms, &workflow](const vora::Step& step) -> vora::Provider {
-                bool critique = false;
+                bool critique = step.critique_output;
                 for (const auto& rule : workflow.validations) if (rule.step == step.name && rule.kind == "critique") critique = true;
                 return vora::LocalProvider(endpoint, model, tokens, reasoning, critique, http_timeout_ms);
             };
@@ -186,6 +186,7 @@ int main(int argc, char** argv) {
                     throw std::runtime_error("Malformed checkpoint metadata.");
                 limits.resume_outputs = checkpoint.at("outputs").get<std::map<std::string, std::string>>();
                 limits.resume_calls = checkpoint.at("calls").get<int>();
+                limits.resume_graph = checkpoint.value("graph_state", json::object());
                 limits.agent_memory = checkpoint.at("memory_context").get<std::map<std::string, std::string>>();
             } else {
                 if (std::filesystem::exists(checkpoint_path))
@@ -194,9 +195,10 @@ int main(int argc, char** argv) {
                     {"memory_context", limits.agent_memory}, {"outputs", nlohmann::json::object()}, {"calls", 0},
                     {"transaction", std::to_string(std::chrono::system_clock::now().time_since_epoch().count())}};
             }
-            limits.checkpoint = [&](const auto& outputs, int calls) {
+            limits.graph_checkpoint = [&](const auto& outputs, int calls, const json& graph) {
                 checkpoint["outputs"] = outputs;
                 checkpoint["calls"] = calls;
+                if (!workflow.reviews.empty()) checkpoint["graph_state"] = graph;
                 try { vora::write_state(checkpoint_path, checkpoint); }
                 catch (const vora::StateWriteError& error) {
                     throw vora::ExecutionError("Checkpoint persistence failed: " + std::string(error.what()));

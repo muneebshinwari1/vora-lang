@@ -34,3 +34,13 @@ binary to the previous version and restore only its own compatible state copy.
 Do not overwrite an in-flight writer or edit a persisted call budget. Check the
 workflow with the selected version, then resume only a matching checkpoint.
 Atomic write does not imply exactly-once model calls or power-loss guarantees.
+
+## Local 0.5 development
+
+Plain 0.4 workflow identities and version-1 archived fixtures are retained.
+Conditional syntax and review directives require the development 0.5 engine.
+Their identity includes routing and round limits; reviewed outputs require
+consistent graph-stage checkpoint state. See [agent graphs](agent-graphs.md).
+0.4 cannot parse these workflows. Preserve the matching development binary and
+backups for recovery; do not copy loop state into a 0.4 job or edit its identity.
+Public installers continue to target 0.4.0 until a separate tested release.

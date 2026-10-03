@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.5.0-dev — local, unreleased
+
+- Add conditional agent calls using validated critique verdicts and exact fallback outputs.
+- Add writer–critic loops capped at 1..10 rounds; keep releases output, exhaustion fails.
+- Save completed loop stages for resume while retaining every call reservation.
+- Extend plans, checkpoint identity and timed traces for routing/review execution.
+- Retain bounded parallel DAG scheduling and test overlapping reviewed branches/joins.
+- Add graph examples, native/HTTP fixtures and graph deployment/migration documentation.
+- Support a separate native binary output directory for isolated development builds.
+- Leave public 0.4 installers, release assets and container tags unchanged.
+
 ## 0.4.0 - 2026-10-03
 
 - Write and flush one Windows handle; recover brief target-reader locks and report checkpoint storage failures.

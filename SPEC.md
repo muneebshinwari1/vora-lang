@@ -1,4 +1,4 @@
-# Vora Language Specification 0.4 (development)
+# Vora Language Specification 0.5 (local development)
 
 Vora is a small declarative language for bounded agent workflows. A program names
 agents, connects them as an acyclic graph, and declares output checks. The native
@@ -15,7 +15,7 @@ implementation is the reference implementation.
 ```ebnf
 program      = header, newline, { statement, newline } ;
 header       = "workflow", name, "(", name, "):" ;
-statement    = agent | tool | step | returns | validate | require | forbid | repair ;
+statement    = agent | tool | step | conditional | review | returns | validate | require | forbid | repair ;
 agent        = "agent", name, "=", string ;
 tool         = "tool", name, "=", string ;
 step         = name, "=", name, "(", ( string | json_object ), ")" ;
@@ -24,6 +24,9 @@ validate     = "validate", name, "as", "critique" ;
 require      = "require", name, ( "sentences", integer | "contains", string ) ;
 forbid       = "forbid", name, "contains", string ;
 repair       = "repair", name, "max", integer ;
+conditional  = name, "=", name, "(", string, ")", "when", name,
+               "verdict", ( '"keep"' | '"revise"' ), "else", name ;
+review       = "review", name, "with", name, "max", integer ;
 ```
 
 Step prompt placeholders such as `{input}` or `{draft}` reference the workflow
@@ -60,6 +63,23 @@ checked again. A failed check after the repair budget is a workflow error.
 
 The result is the returned step's final text. A trace records agent calls,
 retries, validation events, repair calls, tool events, and their ordering.
+
+## Native graph extensions (0.5 development)
+
+A conditional call requires an agent, a critique-validated condition step and a
+fallback step. Condition/fallback and prompt references define ordinary acyclic
+dependencies. If the verdict matches, call the agent; otherwise return the exact
+fallback with zero additional calls. Both paths undergo declared output checks.
+Upstream dependencies execute normally; no arbitrary expressions are evaluated.
+
+`review STEP with CRITIC max N` requires an unconditional agent step, a declared
+critic agent, one review rule per target and N=1..10. Each round runs the writer
+then a schema-validated reviewer. Keep releases the draft; revise supplies the
+previous draft/critique to the original writer prompt for the next round. Exhaustion
+fails closed. Calls, retries and repairs share the global budget. Completed stages
+are durable under the CLI graph checkpoint contract; unfinished calls can repeat
+with previously reserved budget retained. See [full graph semantics and recovery](docs/agent-graphs.md).
+These are native-only development extensions; the stable 0.4 grammar excludes them.
 
 ## Providers and portability
 

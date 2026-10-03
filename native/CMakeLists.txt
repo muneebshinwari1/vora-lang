@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(VoraNative VERSION 0.4.0 LANGUAGES CXX)
+project(VoraNative VERSION 0.5.0 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 option(VORA_SANITIZERS "Enable AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
@@ -25,7 +25,8 @@ else()
   find_package(Threads REQUIRED)
   target_link_libraries(vora PRIVATE CURL::libcurl Threads::Threads)
 endif()
-set_target_properties(vora PROPERTIES RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_CURRENT_SOURCE_DIR}/dist")
+set(VORA_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/dist" CACHE PATH "Native executable output directory")
+set_target_properties(vora PROPERTIES RUNTIME_OUTPUT_DIRECTORY_RELEASE "${VORA_RUNTIME_OUTPUT_DIRECTORY}")
 enable_testing()
 add_executable(parser_tests tests/parser_tests.cpp)
 add_executable(runtime_tests tests/runtime_tests.cpp)
@@ -39,12 +40,14 @@ add_executable(tool_tests tests/tool_tests.cpp)
 add_test(NAME tools COMMAND tool_tests)
 add_executable(limits_tests tests/limits_tests.cpp)
 add_test(NAME limits COMMAND limits_tests)
-set_tests_properties(parser runtime validation state tools limits PROPERTIES TIMEOUT 60)
+add_executable(graph_tests tests/graph_tests.cpp)
+add_test(NAME graphs COMMAND graph_tests)
+set_tests_properties(parser runtime validation state tools limits graphs PROPERTIES TIMEOUT 60)
 
 # Runtime remains C++ only. Python is optional developer fixture tooling.
 find_package(Python3 COMPONENTS Interpreter QUIET)
 if(Python3_Interpreter_FOUND)
-  foreach(fixture http state tools)
+  foreach(fixture http state tools graphs)
     add_test(NAME cli_${fixture}
       COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_${fixture}_cli.py)
     set_tests_properties(cli_${fixture} PROPERTIES TIMEOUT 120
@@ -54,17 +57,18 @@ endif()
 
 include(GNUInstallDirs)
 install(TARGETS vora RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
-install(FILES quickstart-fast.vora review.vora examples/guarded-notice.vora examples/parallel-review.vora examples/workspace-audit.vora examples/file-stats.vora
+install(FILES quickstart-fast.vora review.vora examples/guarded-notice.vora examples/parallel-review.vora examples/workspace-audit.vora examples/file-stats.vora examples/bounded-review.vora examples/conditional-edit.vora examples/parallel-research.vora
         DESTINATION ${CMAKE_INSTALL_DATADIR}/vora/examples)
 install(FILES ../LICENSE ../SPEC.md README.md DESTINATION ${CMAKE_INSTALL_DATADIR}/vora)
 install(FILES ../SECURITY.md DESTINATION ${CMAKE_INSTALL_DATADIR}/vora)
-install(FILES ../docs/compatibility.md ../docs/production-readiness.md
+install(FILES ../docs/compatibility.md ../docs/production-readiness.md ../docs/agent-graphs.md
         DESTINATION ${CMAKE_INSTALL_DATADIR}/vora/docs)
 install(FILES vendor/nlohmann/LICENSE.MIT
         DESTINATION ${CMAKE_INSTALL_DATADIR}/vora/licenses RENAME nlohmann-json-LICENSE.MIT)
 install(DIRECTORY docs DESTINATION ${CMAKE_INSTALL_DATADIR}/vora FILES_MATCHING PATTERN "*.md")
 set(CPACK_PACKAGE_NAME "vora")
 set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
+set(CPACK_PACKAGE_VERSION "0.5.0-dev.1")
 set(CPACK_PACKAGE_VENDOR "Vora contributors")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Native C++ agent workflow language")
 set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/../LICENSE")

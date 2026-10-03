@@ -1,0 +1,8 @@
+workflow ParallelResearch(input):
+    agent researcher = "Suggest a short practical approach to the task. Mark uncertainty."
+    agent skeptic = "Identify two risks or assumptions in the task."
+    agent editor = "Combine the approach and risks into a concise answer without inventing facts."
+    research = researcher("Task: {input}")
+    risks = skeptic("Task: {input}")
+    final = editor("Task: {input}\nApproach: {research}\nRisks: {risks}")
+    return final

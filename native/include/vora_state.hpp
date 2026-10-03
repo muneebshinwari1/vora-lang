@@ -120,9 +120,17 @@ inline nlohmann::json workflow_identity(const Workflow& workflow) {
         {"steps", nlohmann::json::array()}, {"validations", nlohmann::json::array()},
         {"repairs", nlohmann::json::array()}, {"tools", workflow.tools}};
     for (const auto& agent : workflow.agents) result["agents"][agent.first] = agent.second.role;
-    for (const auto& step : workflow.steps)
-        result["steps"].push_back({{"name", step.name}, {"agent", step.agent},
-            {"prompt", step.prompt}, {"dependencies", step.dependencies}, {"kind", step.kind}});
+    for (const auto& step : workflow.steps) {
+        nlohmann::json item = {{"name", step.name}, {"agent", step.agent},
+            {"prompt", step.prompt}, {"dependencies", step.dependencies}, {"kind", step.kind}};
+        if (!step.condition.empty()) item["condition"] = {{"step", step.condition}, {"verdict", step.verdict}, {"fallback", step.fallback}};
+        result["steps"].push_back(std::move(item));
+    }
+    if (!workflow.reviews.empty()) {
+        result["reviews"] = nlohmann::json::array();
+        for (const auto& review : workflow.reviews)
+            result["reviews"].push_back({{"step", review.step}, {"critic", review.critic}, {"max_rounds", review.max_rounds}});
+    }
     for (const auto& rule : workflow.validations)
         result["validations"].push_back({{"step", rule.step}, {"kind", rule.kind},
             {"value", rule.value}, {"number", rule.number}});
@@ -165,6 +173,8 @@ inline void remember(nlohmann::json& memory, const Workflow& workflow, const std
                      const std::map<std::string, std::string>& outputs) {
     for (const auto& step : workflow.steps) {
         if (step.kind == "tool") continue;
+        // An alias is not a response produced by the skipped agent.
+        if (!step.condition.empty() && nlohmann::json::parse(outputs.at(step.condition)).at("verdict") != step.verdict) continue;
         auto& item = memory["agents"][step.agent];
         const auto& role = workflow.agents.at(step.agent).role;
         if (!item.is_object() || item.value("role", "") != role)
