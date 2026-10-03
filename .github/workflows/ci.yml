@@ -17,12 +17,22 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
+      - name: Linux HTTP dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev
       - name: Configure
         run: cmake -S native -B native/build -DCMAKE_BUILD_TYPE=Release
       - name: Build
         run: cmake --build native/build --parallel 2
       - name: Native tests
         run: ctest --test-dir native/build --output-on-failure
+      - name: HTTP and CLI fixture tests
+        run: python3 native/tests/test_http_cli.py
+      - name: Install and package
+        run: |
+          cmake --install native/build --prefix native/stage
+          ./native/stage/bin/vora check native/stage/share/vora/examples/quickstart-fast.vora
+          cd native/build && cpack -C Release
       - name: Portable CLI smoke test
         run: |
           ./native/dist/vora check native/quickstart-fast.vora

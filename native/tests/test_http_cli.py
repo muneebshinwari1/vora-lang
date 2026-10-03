@@ -1,4 +1,5 @@
 """Developer-only protocol fixtures for the native exe. Python is not used by Vora."""
+import os
 import json
 import subprocess
 import tempfile
@@ -50,7 +51,7 @@ class NativeHTTPTests(unittest.TestCase):
             input_file = folder / 'input.txt'
             input_file.write_text('Quoted "text"\nsecond line {x}', encoding='utf-8-sig', newline='')
             trace = folder / 'trace.json'
-            result = subprocess.run([str(NATIVE / 'dist/vora.exe'), 'run', str(workflow),
+            result = subprocess.run([str(NATIVE / ('dist/vora.exe' if os.name == 'nt' else 'dist/vora')), 'run', str(workflow),
                                      '--input-file', str(input_file), '--trace', str(trace),
                                      '--endpoint', f'http://127.0.0.1:{self.server.server_port}/v1/chat/completions',
                                      *args], capture_output=True, text=True, timeout=15)
