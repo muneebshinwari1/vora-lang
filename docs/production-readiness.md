@@ -93,3 +93,18 @@ CMake-built executable through `VORA_TEST_EXE`. Python is test tooling only.
 Release promotion must include a dated report stating which gates passed, the
 tested commit, environment, workload and any remaining blockers. No stable
 production release is declared by this document.
+
+## Hardening review, 2026-10-03
+
+The native security review of `da8c8c91aceb861546b9c0629e18d9f5767c1573`
+covered 55 of 61 native tracked files. Vendored JSON implementation and third-party
+licenses/historical evaluation records were excluded; external model-server and
+system HTTP implementations were outside scope. One low-severity resource
+exhaustion finding was validated: repeated placeholders allocated an oversized
+prompt before checking its limit. The subsequent fix checks every append before
+allocation, bounds interpolated tool fields to their schema limits, and applies
+the same checks to memory and validation-repair prompts. A regression uses an
+allocation guard so the old failure is detected without allocating a gigabyte.
+
+This is a scoped review, not a guarantee for public multi-tenant deployment.
+Exact-commit CI results and deployment evidence must accompany release promotion.

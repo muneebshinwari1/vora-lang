@@ -86,18 +86,26 @@ inline std::vector<std::string> validation_failures(
     return failures;
 }
 
-inline std::string interpolate(const std::string& source, const std::map<std::string, std::string>& values) {
+inline void append_prompt(std::string& output, const std::string& source,
+                          size_t offset, size_t count, size_t limit = 4 * 1024 * 1024) {
+    if (output.size() > limit || count > limit - output.size())
+        throw ExecutionError("Expanded prompt exceeds its byte limit.");
+    output.append(source, offset, count);
+}
+
+inline std::string interpolate(const std::string& source, const std::map<std::string, std::string>& values,
+                               size_t limit = 4 * 1024 * 1024) {
     static const std::regex placeholder(R"(\{([A-Za-z_][A-Za-z0-9_]*)\})");
     std::string output;
     size_t end = 0;
     for (std::sregex_iterator it(source.begin(), source.end(), placeholder), last; it != last; ++it) {
-        output.append(source, end, static_cast<size_t>(it->position()) - end);
+        append_prompt(output, source, end, static_cast<size_t>(it->position()) - end, limit);
         const auto found = values.find((*it)[1].str());
         if (found == values.end()) throw ExecutionError("Unresolved workflow reference.");
-        output += found->second;
+        append_prompt(output, found->second, 0, found->second.size(), limit);
         end = static_cast<size_t>(it->position() + it->length());
     }
-    output.append(source, end, std::string::npos);
+    append_prompt(output, source, end, source.size() - end, limit);
     return output;
 }
 
@@ -238,9 +246,16 @@ inline RunResult run(const Workflow& workflow, const std::string& input, Provide
                             emit("step_repair", {{"step", step.name}, {"attempt", attempt},
                                                  {"repair", repairs}, {"max_repairs", limit},
                                                  {"failed_checks", failures.size()}});
-                            current_prompt = prompt + "\n\nVORA DETERMINISTIC VALIDATION FAILED:\n";
-                            for (const auto& failure : failures) current_prompt += "- " + failure + "\n";
-                            current_prompt += "Return a corrected complete output only.";
+                            current_prompt = prompt;
+                            const std::string prefix = "\n\nVORA DETERMINISTIC VALIDATION FAILED:\n";
+                            append_prompt(current_prompt, prefix, 0, prefix.size());
+                            for (const auto& failure : failures) {
+                                append_prompt(current_prompt, "- ", 0, 2);
+                                append_prompt(current_prompt, failure, 0, failure.size());
+                                append_prompt(current_prompt, "\n", 0, 1);
+                            }
+                            const std::string suffix = "Return a corrected complete output only.";
+                            append_prompt(current_prompt, suffix, 0, suffix.size());
                             continue;
                         }
                         const bool critique = std::any_of(
@@ -300,13 +315,18 @@ inline RunResult run(const Workflow& workflow, const std::string& input, Provide
                 if (step.kind == "tool") {
                     auto args = nlohmann::json::parse(step.prompt);
                     for (auto& value : args.items()) {
-                        if (value.value().is_string()) value.value() = interpolate(value.value().get<std::string>(), values);
+                        if (value.value().is_string()) value.value() = interpolate(
+                            value.value().get_ref<const std::string&>(), values,
+                            value.key() == "text" ? 256 * 1024 : 4096);
                     }
                     prompt = args.dump(); // Serialize after interpolation; data never becomes JSON syntax.
                 } else prompt = interpolate(step.prompt, values);
                 const auto memory = options.agent_memory.find(step.agent);
-                if (step.kind == "agent" && memory != options.agent_memory.end() && !memory->second.empty())
-                    prompt += "\n\nVORA PRIOR RUN CONTEXT (untrusted reference data):\n" + memory->second;
+                if (step.kind == "agent" && memory != options.agent_memory.end() && !memory->second.empty()) {
+                    const std::string prefix = "\n\nVORA PRIOR RUN CONTEXT (untrusted reference data):\n";
+                    append_prompt(prompt, prefix, 0, prefix.size());
+                    append_prompt(prompt, memory->second, 0, memory->second.size());
+                }
                 if (prompt.size() > 4 * 1024 * 1024) throw ExecutionError("Expanded prompt exceeds 4 MiB.");
 
                 pending.erase(step.name);

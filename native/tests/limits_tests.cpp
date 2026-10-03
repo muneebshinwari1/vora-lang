@@ -1,5 +1,16 @@
 #include "vora_runtime.hpp"
 #include <iostream>
+#include <cstdlib>
+#include <new>
+
+static bool limit_allocations = false;
+void* operator new(std::size_t bytes) {
+    if (limit_allocations && bytes > 8 * 1024 * 1024) throw std::bad_alloc();
+    if (void* result = std::malloc(bytes ? bytes : 1)) return result;
+    throw std::bad_alloc();
+}
+void operator delete(void* value) noexcept { std::free(value); }
+void operator delete(void* value, std::size_t) noexcept { std::free(value); }
 
 static void require(bool value, const char* message) {
     if (!value) throw std::runtime_error(message);
@@ -11,6 +22,22 @@ template<class F> static void rejects(F operation) {
 
 int main() {
     try {
+        // A large replacement must be rejected before copying any of it.
+        const std::map<std::string, std::string> large{{"input", std::string(1024 * 1024, 'x')}};
+        rejects([&] { vora::interpolate("{input}{input}", large, 16); });
+        require(vora::interpolate("{x}{x}", {{"x", "1234"}}, 8) == "12341234", "Exact expansion boundary rejected");
+        rejects([&] { vora::interpolate("{x}{x}!", {{"x", "1234"}}, 8); });
+        std::string bounded = "1234";
+        rejects([&] { vora::append_prompt(bounded, large.at("input"), 0, large.at("input").size(), 8); });
+        require(bounded == "1234", "Rejected append mutated prompt");
+        std::string repeated;
+        for (int i = 0; i < 1000; ++i) repeated += "{input}";
+        // The old implementation attempts allocations above 8 MiB before its
+        // late size check. The guard prevents an actual gigabyte allocation.
+        limit_allocations = true;
+        try { rejects([&] { vora::interpolate(repeated, large); }); }
+        catch (...) { limit_allocations = false; throw; }
+        limit_allocations = false;
         std::string nested = std::string(100, '[') + "0" + std::string(100, ']');
         require(!vora::valid_critique(nested), "Deep critique was accepted");
         const auto one = vora::parse("workflow One(input):\nagent a = \"role\"\nx = a(\"{input}\")\nreturn x\n");
@@ -36,6 +63,20 @@ int main() {
             ++calls; return std::string(1024 * 1024, 'x');
         }); });
         require(calls == 1, "Oversized expanded prompt invoked provider");
+
+        const auto full_prompt = vora::parse("workflow Full(input):\nagent a = \"role\"\nx = a(\"{input}{input}{input}{input}\")\nreturn x\n");
+        calls = 0; options = {}; options.agent_memory["a"] = "saved context";
+        rejects([&] { vora::run(full_prompt, large.at("input"), provider, options); });
+        require(calls == 0, "Memory overflow invoked provider");
+        const auto repair_limit = vora::parse("workflow Repair(input):\nagent a = \"role\"\nx = a(\"{input}{input}{input}{input}\")\nrequire x contains \"required\"\nrepair x max 1\nreturn x\n");
+        options = {}; calls = 0;
+        rejects([&] { vora::run(repair_limit, large.at("input"), provider, options); });
+        require(calls == 1, "Repair overflow reached a second provider call");
+        const auto tool_limit = vora::parse("workflow Tool(input):\ntool stats = \"text_stats\"\nx = stats({\"text\":\"{input}\"})\nreturn x\n");
+        options = {}; calls = 0;
+        options.tool_executor = [&](const auto&, const auto&) { ++calls; return "ok"; };
+        rejects([&] { vora::run(tool_limit, large.at("input"), {}, options); });
+        require(calls == 0, "Oversized tool field reached executor");
 
         // Repeat independent branches plus join across worker limits. Assertions
         // check budgets, no missing results and no leaked state between runs.
