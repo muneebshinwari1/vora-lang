@@ -2,6 +2,8 @@
 
 ## 0.4.0-dev — development previews
 
+- Enforce prompt and tool-field limits before interpolation appends, including
+  memory and repair context; add guarded allocation regression coverage.
 - Bound workflow/input reads, source lines/statements, calls and expanded prompts.
 - Reject deeply nested state/model JSON and oversized embedded-provider results.
 - Atomically save result/trace JSON and reject collisions with source/input/state.
