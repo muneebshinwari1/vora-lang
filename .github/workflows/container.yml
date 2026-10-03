@@ -1,6 +1,8 @@
 name: Container package
 
 on:
+  release:
+    types: [published]
   workflow_run:
     workflows: [CI]
     types: [completed]
@@ -9,12 +11,14 @@ permissions:
   contents: read
 
 concurrency:
-  group: container-development
+  group: container-${{ github.event.release.tag_name || github.event.workflow_run.head_sha }}
   cancel-in-progress: false
 
 jobs:
   build:
-    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main'
+    if: github.event_name == 'release' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main')
+    outputs:
+      revision: ${{ steps.revision.outputs.sha }}
     strategy:
       fail-fast: false
       matrix:
@@ -26,15 +30,28 @@ jobs:
     runs-on: ${{ matrix.os }}
     permissions:
       contents: read
+      actions: read
       packages: write
     env:
       IMAGE: ghcr.io/muneebshinwari1/vora-lang
-      REVISION: ${{ github.event.workflow_run.head_sha }}
+      REVISION: ${{ github.event.release.tag_name || github.event.workflow_run.head_sha }}
       ARCH: ${{ matrix.arch }}
     steps:
       - uses: actions/checkout@v7
         with:
           ref: ${{ env.REVISION }}
+      - name: Resolve immutable source revision
+        id: revision
+        run: |
+          SHA=$(git rev-parse HEAD)
+          echo "REVISION=$SHA" >> "$GITHUB_ENV"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+      - name: Verify stable release CI
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: python scripts/verify_release_ci.py
       - name: Build and test container
         run: |
           docker build --build-arg VORA_REVISION="$REVISION" -t "$IMAGE:sha-$REVISION-$ARCH" .
@@ -42,7 +59,7 @@ jobs:
           docker run --rm "$IMAGE:sha-$REVISION-$ARCH" check /opt/vora/share/vora/examples/quickstart-fast.vora
           docker run --rm --network none "$IMAGE:sha-$REVISION-$ARCH" run /opt/vora/share/vora/examples/quickstart-fast.vora --provider demo --input "Container smoke test"
           docker run --rm --network none -v "$PWD:/workspace:ro" "$IMAGE:sha-$REVISION-$ARCH" run /opt/vora/share/vora/examples/file-stats.vora --input README.md --workspace /workspace --allow-tools read_file,text_stats
-      - name: Publish tested development image
+      - name: Publish tested source image
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -57,16 +74,20 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      actions: read
       packages: write
     env:
       IMAGE: ghcr.io/muneebshinwari1/vora-lang
-      REVISION: ${{ github.event.workflow_run.head_sha }}
+      REVISION: ${{ needs.build.outputs.revision }}
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      CHANNEL: ${{ github.event.release.tag_name || 'dev' }}
     steps:
       - name: Publish multi-platform manifest
         run: |
           printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
           docker buildx imagetools create --tag "$IMAGE:sha-$REVISION" "$IMAGE:sha-$REVISION-amd64" "$IMAGE:sha-$REVISION-arm64"
-          docker buildx imagetools create --tag "$IMAGE:dev" "$IMAGE:sha-$REVISION"
-          docker buildx imagetools inspect "$IMAGE:dev"
+          if [ "$CHANNEL" = dev ] || ! docker buildx imagetools inspect "$IMAGE:$CHANNEL" >/dev/null 2>&1; then
+            docker buildx imagetools create --tag "$IMAGE:$CHANNEL" "$IMAGE:sha-$REVISION"
+          fi
+          docker buildx imagetools inspect "$IMAGE:$CHANNEL"
           docker logout ghcr.io

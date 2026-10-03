@@ -123,3 +123,14 @@ jobs:
           python-version: "3.13"
       - name: Unit tests
         run: python -m unittest discover -s tests -v
+
+  container-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Verify candidate container
+        run: |
+          docker build -t vora-candidate .
+          docker run --rm vora-candidate --help | grep 'Vora 0.4.0 -'
+          docker run --rm --network none vora-candidate run /opt/vora/share/vora/examples/quickstart-fast.vora --provider demo --input "Container acceptance"
+          docker run --rm --network none -v "$PWD:/workspace:ro" vora-candidate run /opt/vora/share/vora/examples/file-stats.vora --input README.md --workspace /workspace --allow-tools read_file,text_stats

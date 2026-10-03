@@ -3,6 +3,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends cmake g++ make 
 WORKDIR /src
 COPY native/ native/
 COPY LICENSE SPEC.md SECURITY.md ./
+COPY docs/ docs/
 RUN cmake -S native -B /build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/opt/vora \
     && cmake --build /build --parallel 2 \
     && ctest --test-dir /build --output-on-failure \
