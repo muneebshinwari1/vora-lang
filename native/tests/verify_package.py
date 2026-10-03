@@ -4,7 +4,7 @@ p=argparse.ArgumentParser();p.add_argument('pattern');a=p.parse_args()
 archives=glob.glob(a.pattern)
 if len(archives)!=1:raise RuntimeError('Expected exactly one generated archive')
 with tempfile.TemporaryDirectory(prefix='vora-package-') as tmp:
-    root=pathlib.Path(tmp)
+    root=pathlib.Path(tmp).resolve()
     archive=archives[0]
     if archive.endswith('.zip'):
         with zipfile.ZipFile(archive) as z:
