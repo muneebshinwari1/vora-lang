@@ -1,14 +1,14 @@
-# Vora Native 0.3 — working C++ engine
+# Vora Native 0.4.0-dev — C++ agent workflow engine
 
 ## Start here
 
-**Double-click `Run Vora.cmd` in this folder.** Enter a writing or planning task. It starts the bundled local model if necessary, then runs three agents: writer → critic → editor. The final answer appears in the window; results and traces are saved under `outputs/`.
+**Build the engine and install the local model artifacts first** (see [model setup](docs/model-setup.md)); source clones contain no executables or weights. Then double-click `Run Vora.cmd` in this folder. Enter a writing or planning task. It starts the separately installed local model if necessary, then runs three agents: writer → critic → editor. The final answer appears in the window; results and traces are saved under `outputs/`.
 
-The workflow engine is compiled C++17 in `dist/vora.exe`. The model is served by the bundled C/C++ llama.cpp executable. **Python is not required to run either the engine or the launcher.** The launcher uses Windows PowerShell.
+The workflow engine is compiled C++17 in `dist/vora.exe`. The model is served by the separately installed C/C++ llama.cpp executable. **Python is not required to run either the engine or the launcher.** The launcher uses Windows PowerShell.
 
 The default fast demo uses Qwen3 0.6B. **Double-click `Run Vora Review.cmd` for the experimental Qwen3 1.7B review mode.** Both display the draft, critic feedback and final draft separately. Review mode requests structured critique and stops dependent steps if that critique is malformed. It uses more CPU time and can still miss errors or invent claims; it has not met the quality promotion gate. See the [six-case comparison and remediation results](docs/quality-comparison.md).
 
-There is no web search or external tool execution. Running either bundled model uses local CPU/RAM, with no API key or paid API call. Python is used only for development tests.
+Five explicitly granted builtins support workspace reads and text/JSON processing; see [tools](docs/tools.md). There is no web search or shell execution. Running either local model uses local CPU/RAM, with no API key or paid API call. Python is used only for development tests.
 
 ## Your eight-line workflow
 
@@ -110,7 +110,7 @@ See [validation evidence](docs/validation.md), [independent review](docs/adversa
 
 ## Current boundaries
 
-This build executes a static graph of model calls. It has no autonomous tool access, external actions or hosted account system. Retries apply only to transient failures and count toward the shared call limit. In-flight HTTP requests have socket-operation timeouts but no hard total workflow deadline or forced cancellation. Model output accuracy and commercial demand have not been established by these engineering tests.
+This build executes a static graph of model and explicitly granted tool calls. It has no autonomous tool access, external actions or hosted account system. Retries apply only to transient failures and count toward the shared call limit. In-flight HTTP requests have socket-operation timeouts but no hard total workflow deadline or forced cancellation. Model output accuracy and commercial demand have not been established by these engineering tests.
 
 ## Portable HTTP and packages (0.3.1)
 
@@ -125,6 +125,8 @@ cmake -S native -B native/build -DCMAKE_BUILD_TYPE=Release
 cmake --build native/build --parallel 2
 ctest --test-dir native/build --output-on-failure
 python3 native/tests/test_http_cli.py
+python3 native/tests/test_state_cli.py
+python3 native/tests/test_tools_cli.py
 cmake --install native/build --prefix "$HOME/.local"
 cd native/build
 cpack -C Release
@@ -139,7 +141,7 @@ examples/parallel-review.vora demonstrates independent factual and style reviews
 feeding an editor. Inspect with plan --mermaid; --workers 2 permits parallel calls.
 This uses the existing bounded graph runtime.
 
-## Local development: persistent memory and resume (0.4.0-dev)
+## Persistent memory and resume (0.4.0-dev)
 
 Both features are opt-in; no state is written without their CLI flags.
 
@@ -194,7 +196,7 @@ ctest --test-dir native/build -C Release --output-on-failure
 python native/tests/test_state_cli.py
 ```
 
-Planned capability-controlled tool steps are documented in [tools.md](docs/tools.md).
+Capability-controlled tool steps are documented in [tools.md](docs/tools.md).
 
 ## Controlled tool workflows (0.4.0-dev)
 

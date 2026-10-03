@@ -33,28 +33,33 @@ are CLI/runtime options, not language statements.
 
 ## Static rules
 
-A program has exactly one workflow declaration, at least one agent, and exactly
-one return target. Names are unique and every referenced agent and placeholder exists. The flow
-graph is acyclic, every agent is reachable from a root, and the returned agent is
-reachable. Sentence counts are 1..100 and repair counts are 1..5. Invalid programs fail before a provider is called.
+A program has exactly one workflow declaration, at least one executable step, and exactly
+one return target. Names are unique and every referenced agent/tool and placeholder exists. The step
+graph is acyclic and the return target is a defined step. Agents are optional
+for tool-only workflows; unused declarations are permitted. Sentence counts are 1..100 and repair counts are 1..5. Invalid programs fail before a provider is called.
 
 ## Execution
 
-Agents execute once in topological order. Each prompt substitutes its declared input/output placeholders. Independent steps
+Steps execute in topological order; retries and repairs can add attempts. Each prompt substitutes its declared input/output placeholders. Independent steps
 can run concurrently within the configured worker limit. The provider receives the agent role and assembled prompt. Transient
-provider failures may be retried within `--retries`; all attempts count
-toward the step budget and share the call budget. HTTP adapters apply transport timeouts; the runtime
+provider failures may be retried within `--retries`; all attempts consume
+the shared call budget. HTTP adapters apply transport timeouts; the runtime
 does not guarantee forced cancellation or a hard workflow deadline.
 
-`validate NAME as critique` asks the provider for a critique after `NAME` runs.
+`validate NAME as critique` structurally checks the existing output of step `NAME`
+as critique JSON; it does not create another provider call. The local HTTP
+provider requests the critique schema for that step. The object has exactly
+`verdict`, `issues`, and `instruction`; `keep` requires no issues, `revise` requires
+at least one nonempty issue, and the instruction is nonempty. This does not
+validate factual accuracy.
 Deterministic rules are evaluated locally: `sentences N` requires exactly N
 sentences, `contains` requires an exact case-sensitive substring, and `forbid
-contains` rejects that substring. If a deterministic rule fails and `repair NAME
+contains` rejects that substring. If an agent output check fails and `repair NAME
 max N` exists, the provider receives a bounded repair request and the rules are
 checked again. A failed check after the repair budget is a workflow error.
 
-The result is the returned agent's final text. A trace records agent calls,
-retries, validation calls, repair calls, and their ordering.
+The result is the returned step's final text. A trace records agent calls,
+retries, validation events, repair calls, tool events, and their ordering.
 
 ## Providers and portability
 

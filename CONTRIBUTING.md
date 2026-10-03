@@ -9,7 +9,7 @@ By participating, you agree to follow the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 - Reproduce and fix a parser or runtime bug.
 - Add a focused validator with clear, deterministic semantics.
-- Improve Windows build, local-model setup, examples, or documentation.
+- Improve Windows/Linux/macOS builds, local-model setup, examples, or documentation.
 - Add meaningful tests for concurrency, failure handling, and output contracts.
 - Improve evaluation methodology without deleting or hiding failed results.
 
@@ -43,9 +43,27 @@ On Windows with Visual Studio 2022 C++ Build Tools and CMake:
 ```powershell
 ./native/build.ps1
 python ./native/tests/test_http_cli.py
+python ./native/tests/test_state_cli.py
+python ./native/tests/test_tools_cli.py
 ```
 
-Python is used by the HTTP fixture tests only; the native executable and local
+On Linux/macOS with CMake, a C++17 compiler and libcurl development files:
+
+```sh
+cmake -S native -B native/build -DCMAKE_BUILD_TYPE=Release
+cmake --build native/build --parallel 2
+ctest --test-dir native/build --output-on-failure
+python3 native/tests/test_http_cli.py
+python3 native/tests/test_state_cli.py
+python3 native/tests/test_tools_cli.py
+```
+
+Ubuntu needs `build-essential cmake libcurl4-openssl-dev`; macOS needs Xcode
+command-line tools and CMake. For distribution changes, test installation into
+a temporary prefix and run `cpack -C Release` from `native/build`. See the
+[release procedure](docs/releases.md).
+
+Python is used by HTTP, persistence and tool CLI fixture tests; the native executable and local
 launcher do not require Python at runtime.
 
 ### Python prototype

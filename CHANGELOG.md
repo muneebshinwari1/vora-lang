@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.4.0-dev — development previews
+
+- Add Linux/macOS libcurl HTTP support alongside Windows WinHTTP.
+- Add CMake installation and ZIP/TGZ engine packages.
+- Add bounded opt-in agent memory and configuration-bound checkpoint/resume.
+- Add five capability-controlled builtins and tool-only workflows.
+- Add native state/tools and HTTP/CLI regression coverage across three platforms.
+- Align native-first documentation, contributor instructions and security scope.
+- Publish tested CI package artifacts and document preview releases.
+
+
 ## 0.3.0 — 2026-09-09
 
 - Add native `require STEP sentences N` validation.

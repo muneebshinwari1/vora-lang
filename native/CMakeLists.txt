@@ -35,6 +35,9 @@ install(TARGETS vora RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 install(FILES quickstart-fast.vora review.vora examples/guarded-notice.vora examples/parallel-review.vora examples/workspace-audit.vora examples/file-stats.vora
         DESTINATION ${CMAKE_INSTALL_DATADIR}/vora/examples)
 install(FILES ../LICENSE ../SPEC.md README.md DESTINATION ${CMAKE_INSTALL_DATADIR}/vora)
+install(FILES ../SECURITY.md DESTINATION ${CMAKE_INSTALL_DATADIR}/vora)
+install(FILES vendor/nlohmann/LICENSE.MIT
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/vora/licenses RENAME nlohmann-json-LICENSE.MIT)
 install(DIRECTORY docs DESTINATION ${CMAKE_INSTALL_DATADIR}/vora FILES_MATCHING PATTERN "*.md")
 set(CPACK_PACKAGE_NAME "vora")
 set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})

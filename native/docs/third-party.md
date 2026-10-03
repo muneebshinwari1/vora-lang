@@ -5,3 +5,5 @@
 - Qwen3-0.6B-GGUF: official Qwen Q8_0 model, revision **23749fefcc72300e3a2ad315e1317431b06b590a**. Exact source URL, upstream SHA256 and retained license are documented under `native/local-model/` and [model setup](model-setup.md).
 
 No hosted API credentials or third-party paid services were used for the verified local run.
+
+- libcurl: Linux/macOS HTTP dependency supplied by the build/runtime OS, not vendored. See the [curl license](https://curl.se/docs/copyright.html); retain applicable curl and transitive dependency notices when redistributing those libraries. Packages currently require the system library.

@@ -41,6 +41,13 @@ jobs:
           ./native/dist/vora check native/quickstart-fast.vora
           ./native/dist/vora plan native/quickstart-fast.vora
           ./native/dist/vora run native/quickstart-fast.vora --provider demo --input "CI smoke test"
+      - name: Upload tested package
+        uses: actions/upload-artifact@v7
+        with:
+          name: vora-${{ runner.os }}-${{ runner.arch }}
+          path: native/build/vora-*.tar.gz
+          if-no-files-found: error
+          retention-days: 30
 
   native-windows:
     runs-on: windows-2022
@@ -57,6 +64,20 @@ jobs:
           python native/tests/test_http_cli.py
           python native/tests/test_state_cli.py
           python native/tests/test_tools_cli.py
+      - name: Install and package
+        run: |
+          cmake --install native/build --config Release --prefix native/stage
+          ./native/stage/bin/vora.exe check native/stage/share/vora/examples/quickstart-fast.vora
+          if ($LASTEXITCODE -ne 0) { throw 'Installed CLI smoke check failed' }
+          cpack --config native/build/CPackConfig.cmake -C Release -B native/packages
+          if ($LASTEXITCODE -ne 0) { throw 'Package generation failed' }
+      - name: Upload tested package
+        uses: actions/upload-artifact@v7
+        with:
+          name: vora-${{ runner.os }}-${{ runner.arch }}
+          path: native/packages/vora-*.zip
+          if-no-files-found: error
+          retention-days: 30
 
   python-prototype:
     runs-on: ubuntu-latest

@@ -1,117 +1,85 @@
-# Vora 0.3 — agent workflow language
+# Vora — a native C++ language for AI agent workflows
 
-The parser, planner, deterministic runtime, and demo provider build on Windows,
-Linux, and macOS. Real local-model inference through native HTTP adapters
-runs on Windows, Linux, and macOS (libcurl required on Linux/macOS). See the [Vora 0.3 language specification](SPEC.md).
+Write compact declarative workflows for local AI agent orchestration. Vora validates the dependency graph and runs agents and explicitly granted tools with a C++17 engine.
 
 [![CI](https://github.com/muneebshinwari1/vora-lang/actions/workflows/ci.yml/badge.svg)](https://github.com/muneebshinwari1/vora-lang/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Contributions welcome](https://img.shields.io/badge/contributions-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
-**The working C++ version is in [`native/`](native/README.md). Double-click [`native/Run Vora.cmd`](native/Run%20Vora.cmd) to enter a task and run the writer → critic → editor workflow using a bundled local AI model.** The native engine is `native/dist/vora.exe`; it does not require Python.
+**Status: experimental 0.4.0-dev.** Windows, Linux and macOS are covered by CI. The native runtime needs no Python interpreter. Python is development test tooling and powers the [older prototype](PYTHON_PROTOTYPE.md).
 
-An [experimental review launcher](native/Run%20Vora%20Review.cmd) adds a larger local model, structured critique and native validation. Draft, feedback and final copy are displayed separately. It still makes factual mistakes; see the [independent quality results](native/docs/quality-comparison.md).
-
-The documentation below describes the original Python prototype. Native build, live-model evidence and current limitations are documented in the [native README](native/README.md).
-
-Vora 0.3 adds native deterministic output contracts and bounded automatic repair. A workflow can now require an exact sentence count or phrase, forbid text, and retry a failed step without writing an orchestration loop:
+## An agent workflow in eight lines
 
 ```text
-require final sentences 2
-require final contains "admission is free"
-forbid final contains "$20"
-repair final max 2
+workflow WriteAndReview(input):
+    agent writer = "Write a useful draft in at most 3 short sentences."
+    agent critic = "Review the draft. Give one concrete improvement."
+    agent editor = "Apply the critique. Return only the improved text."
+    draft = writer("Task: {input}")
+    review = critic("Task: {input}\nDraft: {draft}")
+    final = editor("Task: {input}\nDraft: {draft}\nCritique: {review}")
+    return final
 ```
 
-See the [native 0.3 documentation](native/README.md#deterministic-output-rules-and-repair) and [runnable guarded example](native/examples/guarded-notice.vora).
+Placeholders declare dependencies. Independent steps can run concurrently. Invalid references, duplicate names and cycles fail before model execution. This is a compact example, not a measured productivity comparison.
 
-## Contributing
+## Try it without a model
 
-Vora is open source under the MIT License. Bug reports, documentation fixes,
-tests, language-design proposals and focused pull requests are welcome. Read
-[CONTRIBUTING.md](CONTRIBUTING.md), the [Code of Conduct](CODE_OF_CONDUCT.md),
-and [governance](GOVERNANCE.md) before contributing. Please discuss major DSL
-or runtime changes in an issue before investing in a large implementation.
-
-## Original Python prototype
-
-A small language for describing a fixed graph of agent calls. Vora validates the graph before execution, runs independent steps concurrently, and emits structured traces. This is a local engineering prototype, not a published package or production service. The name is provisional; availability and trademarks have not been checked.
-
-```text
-workflow CompanyResearch(company):
-    agent researcher = "Summarize what is known. Label uncertainty; you have no web tool."
-    agent critic = "Identify risks and assumptions without inventing evidence."
-    agent writer = "Write a concise proposal from the supplied analysis."
-    facts = researcher("Analyze this company: {company}")
-    risks = critic("Assess this company: {company}")
-    report = writer("Facts: {facts}\nRisks: {risks}")
-    return report
+```sh
+git clone https://github.com/muneebshinwari1/vora-lang.git
+cd vora-lang
 ```
 
-This is eight nonblank lines of workflow source. The parser, runtime, provider configuration and underlying model are additional machinery. No “50 lines become 8” performance or productivity claim has been validated.
-
-## Run locally
-
-Python 3.11+; no third-party runtime dependencies. From this directory:
+Windows requires CMake 3.20+ and Visual Studio 2022 C++ Build Tools:
 
 ```powershell
-python -m vora check examples/company_research.vora
-python -m vora plan examples/company_research.vora
-python -m vora plan examples/company_research.vora --mermaid
-python -m vora run examples/company_research.vora --input "An example software company" --trace demo-trace.json
-python -m unittest discover -s tests -v
+./native/build.ps1
+./native/dist/vora.exe check native/quickstart-fast.vora
+./native/dist/vora.exe run native/quickstart-fast.vora --provider demo --input "Welcome to the coding club"
+./native/dist/vora.exe run native/examples/file-stats.vora --input README.md --workspace . --allow-tools read_file,text_stats
 ```
 
-The default provider is a deterministic **simulation**. It validates orchestration plumbing, not research accuracy, reasoning quality or real model inference. It makes no network requests. `review.vora` demonstrates a builder → adversary → judge workflow; its output is also simulated unless you select a live provider.
+Linux/macOS require CMake 3.20+, a C++17 compiler and libcurl development files. On Ubuntu install `build-essential cmake libcurl4-openssl-dev`; on macOS install Xcode command-line tools and CMake (system libcurl is used).
 
-If an Ollama server and a suitable model are already available:
-
-```powershell
-python -m vora run examples/review.vora --input "Design a support triage workflow" --provider ollama --model YOUR_INSTALLED_MODEL --retries 1 --max-calls 6
+```sh
+cmake -S native -B native/build -DCMAKE_BUILD_TYPE=Release
+cmake --build native/build --parallel 2
+ctest --test-dir native/build --output-on-failure
+./native/dist/vora run native/quickstart-fast.vora --provider demo --input "Welcome to the coding club"
+./native/dist/vora run native/examples/file-stats.vora --input README.md --workspace . --allow-tools read_file,text_stats
 ```
 
-The Python CLI calls the local Ollama `/api/chat` endpoint. The adapter uses a 120-second socket timeout and requests at most 512 output tokens per call by default. Its protocol was tested against a local HTTP fixture, not a real Ollama model. The separate native build now includes a downloaded local Qwen model served by llama.cpp. [Ollama API](https://docs.ollama.com/api/chat)
+`--provider demo` simulates agent responses; it does not demonstrate AI inference. File-stats reads a real file and computes statistics without a model.
 
-## Execution contract
+## Run real local AI
 
-- `agent name = "role"` declares a role, not a separate persistent process or autonomous worker.
-- `step = agent("prompt {input} {previous}")` declares one provider call. Identifier placeholders determine dependencies. Forward references are allowed; cycles and undefined references fail before execution. Names are ASCII identifiers and globally unique within the file.
-- The header names the input variable. Prompts are double-quoted JSON strings; `\n` embeds a newline. Full-line `#` comments and blank lines are allowed. Indentation is cosmetic. Inline comments and multiline strings are not supported.
-- Every `{identifier}` in a prompt is a reference. Other braces, such as JSON object braces, are ordinary text. There is currently no escape syntax for a literal `{identifier}`. Substituted input/output text is never interpolated again.
-- All declared steps execute, including steps not needed by `return`. A dependency is satisfied only after its step completes. Ready steps are scheduled up to `--workers` (default 4); the executor need not wait for an entire displayed plan layer.
-- `return` selects the final step's text; it must be the last statement. Outputs are plain nonempty strings, without schema enforcement or factual validation.
-- `--retries N` permits at most N additional attempts per step, only for explicit transient provider errors. Attempts consume the shared atomic `--max-calls` limit. A graph whose minimum calls exceed that limit is rejected before any calls.
-- Permanent failures stop further dependent work. Already-running independent calls may finish; they cannot be forcibly cancelled. Custom provider callables must be thread-safe and enforce their own I/O timeouts. There is no hard total workflow timeout or dollar budget.
-- Traces contain run IDs, step/attempt identifiers, status and timing. They omit prompt/output text and provider exception messages. Workflow and step names are present, so do not put secrets in identifiers. Traces are not checkpoints: process restart does not resume a run.
-- The runtime never executes DSL text as Python, runs shell commands, sends email, browses the web or performs tool calls. Agent names such as “researcher” do not grant those abilities. Ollama tool-call responses are rejected.
+Use a local llama.cpp or compatible Ollama server. The default endpoint is `http://127.0.0.1:18080/v1/chat/completions`, model alias `local`. Only loopback endpoints are accepted. See [CLI/provider instructions](native/README.md) and [pinned Windows model setup](native/docs/model-setup.md).
 
-## Python integration
+Source clones and engine packages contain no model weights or llama.cpp server. After building and separately installing the pinned Windows model artifacts, [`native/Run Vora.cmd`](native/Run%20Vora.cmd) launches writer → critic → editor. Small local models can produce incorrect results; read the [recorded quality comparison](native/docs/quality-comparison.md).
 
-```python
-from vora import load
-from vora.runtime import run
+## Runtime features
 
-def my_provider(*, role: str, prompt: str) -> str:
-    # Wire an explicitly configured model client here.
-    return "A nonempty response"
+- Declarative agent/tool steps, dependency planning and bounded concurrency.
+- Structured critique checks, deterministic output rules and bounded repair.
+- Shared call limits, transient transport retries and metadata traces.
+- Opt-in bounded agent memory and resumable checkpoints.
+- Five explicitly granted builtins: `read_file`, `list_files`, `search_file`, `text_stats` and `json_select`.
+- CMake installation and ZIP/TGZ engine packages.
 
-result = run(load("examples/review.vora"), "Your task", my_provider)
-print(result.result)
-```
+Tools have fixed schemas and explicit workspace grants; they are not an OS sandbox. Memory/checkpoints contain plaintext data and are trusted local files. Interrupted unfinished calls may repeat on resume. There are no shell, write/delete or web-fetch tools. See [tool contracts](native/docs/tools.md) and [persistence details](native/README.md#persistent-memory-and-resume-040-dev).
 
-`examples/company_research_baseline.py` declares the same graph in Python using the same runtime. Tests compare its graph and deterministic outputs with the DSL. This isolates DSL authoring; it is not a completed comparison with LangGraph or other frameworks.
+## Documentation and downloads
 
-## What has and has not been validated
+- [Native engine guide](native/README.md) and [language specification](SPEC.md).
+- [Runnable examples](native/examples), [changelog](CHANGELOG.md) and [roadmap](ROADMAP.md).
+- [Contributor guide](CONTRIBUTING.md), [security policy](SECURITY.md) and [release procedure](docs/releases.md).
+- [Releases](https://github.com/muneebshinwari1/vora-lang/releases): previews are marked prerelease.
+- [CI builds](https://github.com/muneebshinwari1/vora-lang/actions/workflows/ci.yml): successful runs upload platform packages retained for 30 days. GitHub sign-in may be required to download artifacts.
 
-Automated tests cover grammar rejection, graph dependencies, actual parallel overlap, retry classification, call limits, redaction and the local HTTP adapter. See [validation results](docs/validation-results.md) for the recorded run and [adversarial review](docs/adversarial-review.md) for independent findings.
+Packages include the engine, examples and docs. Linux/macOS packages require a compatible system libcurl; they are not universal standalone binaries.
 
-The Python prototype tests did not establish real model quality, user productivity, willingness to pay or production reliability. The native build has separate live-inference evidence. There is no public deployment or paid service. Research shows substantial existing alternatives; see [research](docs/research.md) and the proposed [validation plan](docs/validation-plan.md).
+## Help build Vora
 
-Next investment decision: run the same representative workflow against concise Python and an existing agent framework, then conduct a small developer pilot. Add tools, durable execution or a hosted product only when their concrete requirements are established.
+Bug reports, examples, docs, tests and focused pull requests are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md), the [Code of Conduct](CODE_OF_CONDUCT.md) and [governance](GOVERNANCE.md). Use [issues](https://github.com/muneebshinwari1/vora-lang/issues) to report a reproducible problem or discuss a language proposal.
 
-## Local 0.4 development
-
-The native development runtime adds opt-in persistent agent memory, resumable
-checkpoints and capability-controlled tool steps. See [tool workflows](native/docs/tools.md)
-and [persistence documentation](native/README.md#local-development-persistent-memory-and-resume-040-dev).
-These changes are awaiting release validation; v0.3.0 remains the existing tag.
+If Vora is useful to you, a GitHub star helps others discover it. Sharing a real workflow or contributing an example helps the project improve. Vora is open source under the [MIT License](LICENSE).
