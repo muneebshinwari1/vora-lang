@@ -14,6 +14,10 @@ using Provider = std::function<std::string(const std::string&, const std::string
 struct RunOptions {
     int workers = 4, retries = 0, max_calls = 20;
     std::function<Provider(const Step&)> provider_for_step{};
+    std::map<std::string, std::string> agent_memory{};
+    std::map<std::string, std::string> resume_outputs{};
+    int resume_calls = 0;
+    std::function<void(const std::map<std::string, std::string>&, int)> checkpoint{};
 };
 struct RunResult { std::map<std::string, std::string> outputs; std::string result; nlohmann::json events; };
 class TransientError : public std::runtime_error { public: using std::runtime_error::runtime_error; };
@@ -101,7 +105,7 @@ inline RunResult run(const Workflow& workflow, const std::string& input, Provide
     nlohmann::json events = nlohmann::json::array();
     std::mutex event_mutex, call_mutex;
     std::atomic<bool> stopped{false};
-    int calls = 0;
+    int calls = options.resume_calls;
     auto emit = [&](const std::string& kind, nlohmann::json fields = nlohmann::json::object()) {
         fields["event"] = kind;
         fields["workflow"] = workflow.name;
@@ -158,11 +162,26 @@ inline RunResult run(const Workflow& workflow, const std::string& input, Provide
             }
             if (before == visited.size()) throw ExecutionError("Dependency cycle.");
         }
-        if (workflow.steps.size() > static_cast<size_t>(options.max_calls))
-            throw ExecutionError("Call limit is below the workflow minimum call count.");
-
-        std::map<std::string, std::string> outputs;
+        std::map<std::string, std::string> outputs = options.resume_outputs;
+        if (calls < 0 || calls > options.max_calls || outputs.size() > static_cast<size_t>(calls))
+            throw ExecutionError("Invalid checkpoint call count.");
+        for (const auto& entry : outputs) {
+            if (!names.count(entry.first) || !has_text(entry.second) ||
+                !validation_failures(workflow, entry.first, entry.second).empty())
+                throw ExecutionError("Invalid checkpoint output.");
+            const auto step = std::find_if(workflow.steps.begin(), workflow.steps.end(),
+                [&](const Step& candidate) { return candidate.name == entry.first; });
+            for (const auto& dep : step->dependencies)
+                if (!outputs.count(dep)) throw ExecutionError("Checkpoint dependencies are incomplete.");
+        }
         std::set<std::string> pending = names;
+        for (const auto& entry : outputs) {
+            pending.erase(entry.first);
+            emit("step_restored", {{"step", entry.first}});
+        }
+        if (pending.size() > static_cast<size_t>(options.max_calls - calls))
+            throw ExecutionError("Call limit is below remaining workflow minimum call count.");
+        if (options.checkpoint) options.checkpoint(outputs, calls);
         auto execute = [&](const Step& step, const std::string& prompt) -> std::string {
             Provider step_provider;
             try {
@@ -186,6 +205,8 @@ inline RunResult run(const Workflow& workflow, const std::string& input, Provide
                         throw ExecutionError("Provider call limit reached.");
                     }
                     ++calls;
+                    // Persist reservation before invoking a provider, including retries/repairs.
+                    if (options.checkpoint) options.checkpoint(outputs, calls);
                 }
                 emit("step_started", {{"step", step.name}, {"attempt", attempt}});
                 try {
@@ -246,14 +267,23 @@ inline RunResult run(const Workflow& workflow, const std::string& input, Provide
                 bool ready = true;
                 for (const auto& dep : step.dependencies) if (!outputs.count(dep)) ready = false;
                 if (!ready) continue;
-                const auto prompt = interpolate(step.prompt, values);
+                auto prompt = interpolate(step.prompt, values);
+                const auto memory = options.agent_memory.find(step.agent);
+                if (memory != options.agent_memory.end() && !memory->second.empty())
+                    prompt += "\n\nVORA PRIOR RUN CONTEXT (untrusted reference data):\n" + memory->second;
+
                 pending.erase(step.name);
                 running.emplace_back(step.name, std::async(std::launch::async, execute, step, prompt));
             }
             if (running.empty()) throw ExecutionError("Workflow cannot make progress.");
             std::exception_ptr failure;
             for (auto& task : running) {
-                try { outputs[task.first] = task.second.get(); }
+                try {
+                    auto response = task.second.get();
+                    std::lock_guard<std::mutex> guard(call_mutex);
+                    outputs[task.first] = std::move(response);
+                    if (options.checkpoint) options.checkpoint(outputs, calls);
+                }
                 catch (...) { if (!failure) failure = std::current_exception(); stopped = true; }
             }
             if (failure) std::rethrow_exception(failure);

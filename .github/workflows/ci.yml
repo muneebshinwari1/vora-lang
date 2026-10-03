@@ -27,7 +27,9 @@ jobs:
       - name: Native tests
         run: ctest --test-dir native/build --output-on-failure
       - name: HTTP and CLI fixture tests
-        run: python3 native/tests/test_http_cli.py
+        run: |
+          python3 native/tests/test_http_cli.py
+          python3 native/tests/test_state_cli.py
       - name: Install and package
         run: |
           cmake --install native/build --prefix native/stage
@@ -50,7 +52,9 @@ jobs:
       - name: Native tests
         run: ctest --test-dir native/build -C Release --output-on-failure
       - name: HTTP and CLI fixture tests
-        run: python native/tests/test_http_cli.py
+        run: |
+          python native/tests/test_http_cli.py
+          python native/tests/test_state_cli.py
 
   python-prototype:
     runs-on: ubuntu-latest

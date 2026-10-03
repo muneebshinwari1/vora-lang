@@ -30,3 +30,9 @@ native/local-model/llama-*/
 
 native/stage/
 native/packages/
+
+# Opt-in private runtime state; prefer storing outside the checkout.
+*memory*.json
+*checkpoint*.json
+*.json.lock/
+*.json.tmp

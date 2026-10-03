@@ -110,7 +110,7 @@ See [validation evidence](docs/validation.md), [independent review](docs/adversa
 
 ## Current boundaries
 
-This build executes a static graph of model calls. It has no autonomous tool access, persistent agent memory, durable resume, external actions or hosted account system. Retries apply only to transient failures and count toward the shared call limit. In-flight HTTP requests have socket-operation timeouts but no hard total workflow deadline or forced cancellation. Model output accuracy and commercial demand have not been established by these engineering tests.
+This build executes a static graph of model calls. It has no autonomous tool access, external actions or hosted account system. Retries apply only to transient failures and count toward the shared call limit. In-flight HTTP requests have socket-operation timeouts but no hard total workflow deadline or forced cancellation. Model output accuracy and commercial demand have not been established by these engineering tests.
 
 ## Portable HTTP and packages (0.3.1)
 
@@ -138,3 +138,60 @@ need a compatible libcurl runtime. Models are not bundled.
 examples/parallel-review.vora demonstrates independent factual and style reviews
 feeding an editor. Inspect with plan --mermaid; --workers 2 permits parallel calls.
 This uses the existing bounded graph runtime.
+
+## Local development: persistent memory and resume (0.4.0-dev)
+
+Both features are opt-in; no state is written without their CLI flags.
+
+```sh
+vora run workflow.vora --input "task" --memory agent-memory.json --checkpoint run-checkpoint.json
+vora run workflow.vora --input "task" --memory agent-memory.json --resume run-checkpoint.json
+```
+
+Memory keeps four recent successful outputs per agent name and exact role, with
+up to 2048 bytes of task text and 4096 bytes of output per entry. A changed role
+starts a fresh context. UTF-8 truncation keeps codepoint boundaries. The runtime
+appends prior context as explicitly labeled untrusted reference data. This is
+bounded conversation context, not semantic search or a prompt-injection defense.
+Only an entirely successful workflow updates memory. Keep separate files for
+projects that should not share agent context. Delete the file to reset memory.
+
+Checkpoints save validated step outputs and consumed provider calls. Calls are
+reserved on disk before execution; transport retries and repairs also consume
+the saved budget. Resume skips completed steps, rechecks their output contracts,
+and requires identical workflow semantics, input, provider, endpoint, model,
+token settings, retry budget, and maximum-call budget. Worker count may change.
+The original memory snapshot is restored even if the memory file changed later.
+A fresh checkpoint refuses to overwrite an existing file.
+
+Completed checkpoints make no new provider calls. Memory records the last 64
+checkpoint transaction IDs to avoid repeating its update when completion is
+resumed, including recovery after the checkpoint finished before memory saved.
+Older transaction replays may add history again once that bounded ledger expires.
+
+Writes use a same-directory temporary file and atomic replacement. They protect
+against partial JSON after process interruption; POSIX power-loss durability is
+not guaranteed because file/directory fsync is not implemented. A crash after a
+provider response but before output persistence can repeat that call on resume.
+This is not exactly-once execution and is unsuitable for unguarded external side
+effects. Incomplete steps restart their repair/retry counters while retaining the
+consumed total-call budget. Calls still in flight at interruption count as spent.
+
+A lock directory excludes cooperating writers. After a crash a stale .lock may
+remain: verify no process is writing before removing it manually. Parent folders
+must already exist. State files contain task text, model outputs and configuration
+in plaintext, have an 8 MiB limit, and should be private. They are trusted local
+artifacts, not authenticated against tampering. Never resume another person's
+checkpoint. File access uses normal OS permissions; no encryption or ACL setup
+is provided. Memory/checkpoints must have distinct paths from workflow, input,
+trace and output files. For lost/tampered/exhausted checkpoints start a new run
+with a new path; do not edit budgets in state files.
+
+Developer checks:
+
+```sh
+ctest --test-dir native/build -C Release --output-on-failure
+python native/tests/test_state_cli.py
+```
+
+Autonomous tool execution is not part of this change.
