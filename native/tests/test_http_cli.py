@@ -197,6 +197,41 @@ class NativeHTTPTests(unittest.TestCase):
                 self.assertNotEqual(result.returncode, 0)
         self.assertEqual(len(self.requests), 0)
 
+    def test_forced_interruption_preserves_reserved_call_and_resumes(self):
+        type(self).delay = 0.5
+        with tempfile.TemporaryDirectory() as directory:
+            folder = Path(directory)
+            workflow = folder / 'crash.vora'
+            workflow.write_text('workflow Crash(input):\nagent a = "role"\nx = a("{input}")\nreturn x\n', encoding='utf-8')
+            checkpoint = folder / 'checkpoint.json'
+            command = [str(EXE), 'run', str(workflow), '--input', 'task', '--max-calls', '2',
+                       '--endpoint', f'http://127.0.0.1:{self.server.server_port}/v1/chat/completions']
+            process = subprocess.Popen([*command, '--checkpoint', str(checkpoint)], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            try:
+                deadline = time.monotonic() + 5
+                while not self.requests and time.monotonic() < deadline:
+                    time.sleep(0.01)
+                self.assertTrue(self.requests, 'Provider request never arrived')
+                process.terminate()
+                process.communicate(timeout=5)
+                saved = json.loads(checkpoint.read_text())
+                self.assertEqual(saved['calls'], 1)
+                self.assertEqual(saved['outputs'], {})
+                lock = Path(str(checkpoint) + '.lock')
+                self.assertTrue(lock.is_dir())
+                # Operator recovery after the original writer has definitely exited.
+                lock.rmdir()
+                time.sleep(0.6)
+                type(self).delay = 0
+                result = subprocess.run([*command, '--resume', str(checkpoint)], capture_output=True, text=True, timeout=10)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(json.loads(checkpoint.read_text())['calls'], 2)
+                self.assertEqual(len(self.requests), 2)
+            finally:
+                if process.poll() is None:
+                    process.kill()
+                    process.communicate(timeout=5)
+
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)

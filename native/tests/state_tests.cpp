@@ -85,6 +85,22 @@ int main() {
             require(vora::read_state(path)["value"] == 2, "Atomic replacement failed");
             rejects([&] { vora::write_state(path, {{"value", std::string(9 * 1024 * 1024, 'x')}}); });
             require(vora::read_state(path)["value"] == 2, "Failed write damaged state");
+            const auto temporary = std::filesystem::path(path.string() + ".tmp");
+            std::filesystem::create_directory(temporary);
+            std::ofstream(temporary / "keep.txt") << "reserved sidecar obstruction";
+            rejects([&] { vora::write_state(path, {{"value", 3}}); });
+            require(vora::read_state(path)["value"] == 2, "Temporary file failure damaged previous state");
+            require(std::filesystem::exists(temporary / "keep.txt"), "Failed write removed unrelated sidecar content");
+            std::filesystem::remove_all(temporary);
+#ifndef _WIN32
+            if (std::filesystem::exists("/dev/full")) {
+                // Real ENOSPC from the Unix test device, without filling the host disk.
+                std::filesystem::create_symlink("/dev/full", temporary);
+                rejects([&] { vora::write_state(path, {{"value", 3}}); });
+                require(vora::read_state(path)["value"] == 2, "Disk-full write damaged previous state");
+                require(!std::filesystem::exists(temporary), "Failed temporary write was not cleaned up");
+            }
+#endif
         }
         require(!std::filesystem::exists(path.string() + ".lock"), "Lock not released");
         std::filesystem::remove_all(folder);
