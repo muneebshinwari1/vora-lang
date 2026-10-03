@@ -35,13 +35,13 @@ are CLI/runtime options, not language statements.
 A program has exactly one workflow declaration, at least one agent, and exactly
 one return target. Names are unique and every referenced agent and placeholder exists. The flow
 graph is acyclic, every agent is reachable from a root, and the returned agent is
-reachable. Sentence counts are 1–100 and repair counts are 1–5. Invalid programs fail before a provider is called.
+reachable. Sentence counts are 1..100 and repair counts are 1..5. Invalid programs fail before a provider is called.
 
 ## Execution
 
 Agents execute once in topological order. Each prompt substitutes its declared input/output placeholders. Independent steps
 can run concurrently within the configured worker limit. The provider receives the agent role and assembled prompt. Transient
-provider failures may be retried within `limits retries`; all attempts count
+provider failures may be retried within `--retries`; all attempts count
 toward the step budget and share the call budget. HTTP adapters apply transport timeouts; the runtime
 does not guarantee forced cancellation or a hard workflow deadline.
 
