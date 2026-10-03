@@ -85,6 +85,24 @@ int main() {
             require(vora::read_state(path)["value"] == 2, "Atomic replacement failed");
             rejects([&] { vora::write_state(path, {{"value", std::string(9 * 1024 * 1024, 'x')}}); });
             require(vora::read_state(path)["value"] == 2, "Failed write damaged state");
+#ifdef _WIN32
+            // A scanner may briefly hold the old target without delete sharing.
+            HANDLE reader = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ,
+                nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+            require(reader != INVALID_HANDLE_VALUE, "Cannot hold target reader");
+            std::thread release_reader([reader] { Sleep(100); CloseHandle(reader); });
+            try { vora::write_state(path, {{"value", 3}}); }
+            catch (...) { release_reader.join(); throw; }
+            release_reader.join();
+            require(vora::read_state(path)["value"] == 3, "Transient reader lock was not recovered");
+            reader = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ,
+                nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+            require(reader != INVALID_HANDLE_VALUE, "Cannot hold permanent reader");
+            rejects([&] { vora::write_state(path, {{"value", 4}}); });
+            CloseHandle(reader);
+            require(vora::read_state(path)["value"] == 3, "Locked target write damaged prior state");
+            vora::write_state(path, {{"value", 2}});
+#endif
             const auto temporary = std::filesystem::path(path.string() + ".tmp");
             std::filesystem::create_directory(temporary);
             std::ofstream(temporary / "keep.txt") << "reserved sidecar obstruction";

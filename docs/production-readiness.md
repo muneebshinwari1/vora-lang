@@ -9,7 +9,7 @@ not establish readiness for a new deployment or model.
 
 One trusted operator or internal team runs reviewed workflows under a dedicated
 OS account, against a loopback model server. Filesystem tools read a deliberately
-selected workspace, using explicit grants. State lives in private local storage.
+selected workspace, using explicit grants. State lives in private local storage outside cloud-sync folders such as OneDrive.
 An application or process supervisor owns scheduling, deadlines, retries across
 process restarts and result consumption. Vora is a CLI engine, not a public API.
 
@@ -128,3 +128,10 @@ python native/tests/soak.py --exe native/dist/vora --workflow native/quickstart-
 On Windows use native/dist/vora.exe. The output directory must be new. Metrics
 include per-job status/calls, nearest-rank p95 latency, sampled engine RSS and
 model-server RSS endpoints. Retain logs and state for failed runs.
+
+Windows persistence writes and flushes one handle, then retries only transient
+sharing/lock/access-denied failures when replacing the target (maximum 500ms of retry sleeps).
+A longer lock or storage failure fails closed and preserves the prior checkpoint.
+Checkpoint errors identify the storage phase and Windows error code without
+including prompt contents. Cloud-sync folders are outside the tested storage
+contract; copy completed artifacts there only after successful job completion.

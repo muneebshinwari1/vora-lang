@@ -197,7 +197,10 @@ int main(int argc, char** argv) {
             limits.checkpoint = [&](const auto& outputs, int calls) {
                 checkpoint["outputs"] = outputs;
                 checkpoint["calls"] = calls;
-                vora::write_state(checkpoint_path, checkpoint);
+                try { vora::write_state(checkpoint_path, checkpoint); }
+                catch (const vora::StateWriteError& error) {
+                    throw vora::ExecutionError("Checkpoint persistence failed: " + std::string(error.what()));
+                }
             };
         }
         const auto result = vora::run(workflow, input, provider, limits);

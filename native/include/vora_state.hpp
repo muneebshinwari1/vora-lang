@@ -16,6 +16,7 @@
 #endif
 
 namespace vora {
+class StateWriteError : public std::runtime_error { public: using std::runtime_error::runtime_error; };
 // One writer per state file. An interrupted process can leave a lock directory;
 // the operator must verify no writer remains before removing it.
 class StateLock {
@@ -41,50 +42,70 @@ inline nlohmann::json read_state(const std::filesystem::path& path) {
 
 inline void write_state(const std::filesystem::path& path, const nlohmann::json& data) {
     const auto raw = data.dump(2);
-    if (raw.size() >= 8 * 1024 * 1024) throw std::runtime_error("State exceeds 8 MiB including its newline.");
+    if (raw.size() >= 8 * 1024 * 1024) throw StateWriteError("State exceeds 8 MiB including its newline.");
     const std::filesystem::path temporary(path.string() + ".tmp");
     try {
+#ifdef _WIN32
+        // Write and flush the same handle. Reopening exclusively after closing
+        // creates a race with filesystem scanners and sync clients.
+        const HANDLE file = CreateFileW(temporary.c_str(), GENERIC_WRITE, FILE_SHARE_READ,
+            nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (file == INVALID_HANDLE_VALUE)
+            throw StateWriteError("Cannot create state temporary file (Windows error " + std::to_string(GetLastError()) + ").");
+        DWORD written = 0;
+        const bool body_ok = WriteFile(file, raw.data(), static_cast<DWORD>(raw.size()), &written, nullptr) != 0 && written == raw.size();
+        DWORD newline = 0;
+        const bool newline_ok = body_ok && WriteFile(file, "\n", 1, &newline, nullptr) != 0 && newline == 1;
+        const bool flushed = newline_ok && FlushFileBuffers(file) != 0;
+        const DWORD write_error = GetLastError();
+        const bool closed = CloseHandle(file) != 0;
+        const DWORD close_error = closed ? ERROR_SUCCESS : GetLastError();
+        if (!flushed || !closed)
+            throw StateWriteError("Cannot write/flush state file (Windows error " + std::to_string(closed ? write_error : close_error) + ").");
+        bool replaced = false;
+        DWORD replace_error = 0;
+        for (int attempt = 0; attempt < 26; ++attempt) {
+            if (MoveFileExW(temporary.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+                replaced = true; break;
+            }
+            replace_error = GetLastError();
+            if ((replace_error != ERROR_SHARING_VIOLATION && replace_error != ERROR_LOCK_VIOLATION && replace_error != ERROR_ACCESS_DENIED) || attempt == 25) break;
+            Sleep(20); // At most 500ms waiting for transient reader locks.
+        }
+        if (!replaced)
+            throw StateWriteError("Cannot replace state file (Windows error " + std::to_string(replace_error) + ").");
+#else
         std::ofstream file(temporary, std::ios::binary | std::ios::trunc);
-        if (!file) throw std::runtime_error("Cannot create state temporary file.");
+        if (!file) throw StateWriteError("Cannot create state temporary file.");
         file << raw << '\n';
         file.flush();
-        if (!file) throw std::runtime_error("Cannot flush state file.");
+        if (!file) throw StateWriteError("Cannot flush state file.");
         file.close();
-        if (!file) throw std::runtime_error("Cannot close state file.");
-#ifdef _WIN32
-        const HANDLE flush_handle = CreateFileW(temporary.c_str(), GENERIC_WRITE, 0, nullptr,
-            OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-        if (flush_handle == INVALID_HANDLE_VALUE) throw std::runtime_error("Cannot open state for durable flush.");
-        const bool flushed = FlushFileBuffers(flush_handle) != 0;
-        CloseHandle(flush_handle);
-        if (!flushed) throw std::runtime_error("Cannot durably flush state file.");
-        if (!MoveFileExW(temporary.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
-            throw std::runtime_error("Cannot replace state file.");
-#else
+        if (!file) throw StateWriteError("Cannot close state file.");
         const int fd = ::open(temporary.c_str(), O_WRONLY);
-        if (fd < 0) throw std::runtime_error("Cannot open state for durable flush.");
+        if (fd < 0) throw StateWriteError("Cannot open state for durable flush.");
         const int flushed = ::fsync(fd);
         const int closed = ::close(fd);
-        if (flushed != 0 || closed != 0) throw std::runtime_error("Cannot durably flush state file.");
+        if (flushed != 0 || closed != 0) throw StateWriteError("Cannot durably flush state file.");
         const auto parent = path.parent_path().empty() ? std::filesystem::path(".") : path.parent_path();
         const int directory = ::open(parent.c_str(), O_RDONLY | O_DIRECTORY);
-        if (directory < 0) throw std::runtime_error("Cannot open state directory for durable flush.");
+        if (directory < 0) throw StateWriteError("Cannot open state directory for durable flush.");
         // Probe support before replacing the old file. Some network filesystems
         // do not implement directory fsync and are unsupported for this contract.
         if (::fsync(directory) != 0) {
             ::close(directory);
-            throw std::runtime_error("State directory does not support durable flush.");
+            throw StateWriteError("State directory does not support durable flush.");
         }
         std::error_code rename_error;
         std::filesystem::rename(temporary, path, rename_error);
         if (rename_error) {
             ::close(directory);
-            throw std::runtime_error("Cannot replace state file.");
+            throw StateWriteError("Cannot replace state file.");
         }
         const int synced = ::fsync(directory);
         const int directory_closed = ::close(directory);
         if (synced != 0 || directory_closed != 0)
-            throw std::runtime_error("State replaced, but directory durability is uncertain.");
+            throw StateWriteError("State replaced, but directory durability is uncertain.");
 #endif
     } catch (...) {
         std::error_code error;

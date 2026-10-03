@@ -2,6 +2,7 @@
 
 ## 0.4.0 - 2026-10-03
 
+- Write and flush one Windows handle; recover brief target-reader locks and report checkpoint storage failures.
 - Freeze the native 0.4 patch compatibility contract and document preview migration/rollback.
 - Verify archived checkpoint compatibility and clean archive installation in CI.
 - Add a reproducible real-model soak harness with call/result and sampled RSS metrics.
