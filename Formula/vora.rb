@@ -1,9 +1,9 @@
 class Vora < Formula
   desc "Native language for bounded local AI agent workflows"
   homepage "https://github.com/muneebshinwari1/vora-lang"
-  url "https://github.com/muneebshinwari1/vora-lang/archive/refs/tags/v0.4.0-dev.1.tar.gz"
-  version "0.4.0-dev.1"
-  sha256 "ceaa6e8d139a5004d78a8fec25dbe3eca3927c9085426c481669870c4d802076"
+  url "https://github.com/muneebshinwari1/vora-lang/archive/refs/tags/v0.4.0.tar.gz"
+  version "0.4.0"
+  sha256 "7130c0d74d8a3d5409ccba16a2e3453676f336dea356b086242d85598699bf86"
   license "MIT"
 
   depends_on "cmake" => :build
@@ -21,7 +21,7 @@ class Vora < Formula
   end
 
   test do
-    assert_match "0.4.0-dev", shell_output("#{bin}/vora --help")
+    assert_match "Vora 0.4.0 -", shell_output("#{bin}/vora --help")
     assert_match "Valid", shell_output("#{bin}/vora check #{pkgshare}/examples/quickstart-fast.vora")
     (testpath/"stats.vora").write <<~EOS
       workflow Stats(input):

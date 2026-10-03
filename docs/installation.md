@@ -1,6 +1,6 @@
 # Install Vora
 
-Vora is an experimental 0.4 development preview. These channels install the
+Vora 0.4.0 supports reviewed, trusted local workflows. These channels install the
 native engine; model weights and model servers are separate. No paid API key is
 needed. The older Python prototype is not an install dependency.
 
@@ -15,7 +15,7 @@ vora --help
 vora run "$(scoop prefix vora)/share/vora/examples/quickstart-fast.vora" --provider demo --input "Hello developers"
 ```
 
-The manifest pins the published preview archive and SHA256. Scoop manages PATH,
+The manifest pins the published stable archive and SHA256. Scoop manages PATH,
 upgrades and uninstall: `scoop update vora` and `scoop uninstall vora`. New release
 versions become available when maintainers update the manifest. This is the
 project's custom bucket, not a listing in Scoop's official main bucket.
@@ -45,15 +45,16 @@ From a checked-out repository, review and run:
 
 ```sh
 sh scripts/install.sh
-export PATH="$HOME/.local/share/vora/0.4.0-dev.1/bin:$PATH"
+export PATH="$HOME/.local/share/vora/0.4.0/bin:$PATH"
 vora --help
 ```
 
 It verifies an embedded SHA256 before extracting, checks the installed engine,
 and refuses existing destinations. Set `VORA_INSTALL_DIR` to an empty custom
 directory. It does not change your shell profile or require sudo. Linux archives
-target the GitHub Ubuntu runner and need compatible glibc/libcurl; use Homebrew
-or build from source for other distributions. macOS binaries are unsigned and
+require glibc 2.38+, GLIBCXX 3.4.32+ and libcurl.so.4. The macOS ARM64 archive
+requires macOS 26+. Use Homebrew or build from source for other supported systems.
+macOS binaries are unsigned and
 not notarized. Do not bypass OS warnings for an unverified download.
 To uninstall, remove only the installation directory you chose and its PATH
 entry; keep your workflow/state files. No user state is stored in that folder
@@ -61,16 +62,17 @@ unless you explicitly choose to put it there.
 
 ## Docker / GitHub Packages
 
+Stable images use the immutable `v0.4.0` tag and require successful release CI.
 Development images are published only after all main-branch CI jobs pass.
 `dev` follows the latest tested development commit; pin the `sha-COMMIT` tag or
 image digest for reproducible runs. The images support Linux amd64 and arm64.
 Docker Desktop runs these Linux images on Windows/macOS.
 
 ```sh
-docker pull ghcr.io/muneebshinwari1/vora-lang:dev
-docker run --rm --network none ghcr.io/muneebshinwari1/vora-lang:dev --help
-docker run --rm --network none ghcr.io/muneebshinwari1/vora-lang:dev run /opt/vora/share/vora/examples/quickstart-fast.vora --provider demo --input "Hello developers"
-docker run --rm --network none -v "$PWD:/workspace:ro" ghcr.io/muneebshinwari1/vora-lang:dev run /opt/vora/share/vora/examples/file-stats.vora --input README.md --workspace /workspace --allow-tools read_file,text_stats
+docker pull ghcr.io/muneebshinwari1/vora-lang:v0.4.0
+docker run --rm --network none ghcr.io/muneebshinwari1/vora-lang:v0.4.0 --help
+docker run --rm --network none ghcr.io/muneebshinwari1/vora-lang:v0.4.0 run /opt/vora/share/vora/examples/quickstart-fast.vora --provider demo --input "Hello developers"
+docker run --rm --network none -v "$PWD:/workspace:ro" ghcr.io/muneebshinwari1/vora-lang:v0.4.0 run /opt/vora/share/vora/examples/file-stats.vora --input README.md --workspace /workspace --allow-tools read_file,text_stats
 ```
 
 In PowerShell use `${PWD}` for the mounted current directory. Containers run as
@@ -87,7 +89,7 @@ model server on port 18080, use `--network host` on Linux, or enable host
 networking on Docker Desktop 4.34+ before using that option:
 
 ```sh
-docker run --rm --network host ghcr.io/muneebshinwari1/vora-lang:dev run /opt/vora/share/vora/examples/quickstart-fast.vora --input "Write a welcome message"
+docker run --rm --network host ghcr.io/muneebshinwari1/vora-lang:v0.4.0 run /opt/vora/share/vora/examples/quickstart-fast.vora --input "Write a welcome message"
 ```
 
 Alternatively share a local model container's network namespace using
@@ -104,7 +106,7 @@ and their checksums are also available in [Releases](https://github.com/muneebsh
 
 ## Maintainer checklist
 
-For each preview, update the Scoop manifest, Homebrew source URL/hash and direct
+For each release, update the Scoop manifest, Homebrew source URL/hash and direct
 installer version/hashes together. Run package-manager and installer CI checks.
 Publish containers only from a commit whose full CI passed; preserve immutable
 SHA tags. Check that the GHCR package visibility is public and verify an anonymous

@@ -1,10 +1,10 @@
 #!/bin/sh
-# Install the fixed, checksum-verified preview without root privileges.
+# Install the fixed, checksum-verified release without root privileges.
 set -eu
-version=0.4.0-dev.1
+version=0.4.0
 case "$(uname -s):$(uname -m)" in
-  Linux:x86_64) asset=vora-Linux-X64.tar.gz; hash=1273da18d9fdf02b4aa98970f633d6a3296bf3c90961b70886b226d8b9028ab9 ;;
-  Darwin:arm64) asset=vora-macOS-ARM64.tar.gz; hash=d550a6747dbf5876e4fe3f6316c67b567186a40e00f9c2311f3501e764ebf9e8 ;;
+  Linux:x86_64) asset=vora-Linux-X64.tar.gz; hash=633499c3c921ff34f98e6edeec63b6d4a1f4f3af92cd63b127a0134393bf58bb ;;
+  Darwin:arm64) asset=vora-macOS-ARM64.tar.gz; hash=5d1d005c05193f22c13f4a0587f2ef4576f1dd6ea5559371e41c81925028361a ;;
   *) echo 'No prebuilt archive for this platform. Use the Homebrew source formula or build with CMake.' >&2; exit 1 ;;
 esac
 prefix=${VORA_INSTALL_DIR:-"$HOME/.local/share/vora/$version"}

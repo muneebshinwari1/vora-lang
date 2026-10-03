@@ -32,7 +32,7 @@ Windows Scoop, macOS/Linux Homebrew, checksum-verified direct archives and
 multi-platform Docker images on GitHub Packages.
 
 ```sh
-docker run --rm --network none ghcr.io/muneebshinwari1/vora-lang:dev run /opt/vora/share/vora/examples/quickstart-fast.vora --provider demo --input "Hello developers"
+docker run --rm --network none ghcr.io/muneebshinwari1/vora-lang:v0.4.0 run /opt/vora/share/vora/examples/quickstart-fast.vora --provider demo --input "Hello developers"
 ```
 
 To build from source:

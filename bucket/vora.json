@@ -1,15 +1,15 @@
 {
-    "version": "0.4.0-dev.1",
-    "description": "Native C++17 language for local AI agent workflows (experimental preview)",
+    "version": "0.4.0",
+    "description": "Native C++17 language for reviewed, trusted local AI agent workflows",
     "homepage": "https://github.com/muneebshinwari1/vora-lang",
     "license": "MIT",
     "architecture": {
         "64bit": {
-            "url": "https://github.com/muneebshinwari1/vora-lang/releases/download/v0.4.0-dev.1/vora-Windows-X64.zip",
-            "hash": "e3614fdf270719f8915dd1bcd36923623f2c094a1b2daa691814182adbc5acf0",
+            "url": "https://github.com/muneebshinwari1/vora-lang/releases/download/v0.4.0/vora-Windows-X64.zip",
+            "hash": "b13f2447202fd5d54805bb90450a449847435b346945dd1531198d132f3511ca",
             "extract_dir": "vora-0.4.0-win64"
         }
     },
     "bin": "bin\\vora.exe",
-    "notes": "Experimental preview. Models are installed separately. Examples and docs are in share/vora. See the installation guide for model-free and real-inference commands."
+    "notes": "For reviewed, trusted local workflows. Keep checkpoint and memory files outside cloud-sync folders. Models are installed separately. Examples and docs are in share/vora."
 }
