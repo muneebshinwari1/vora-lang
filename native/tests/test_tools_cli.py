@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 NATIVE = Path(__file__).resolve().parents[1]
-EXE = NATIVE / ('dist/vora.exe' if os.name == 'nt' else 'dist/vora')
+EXE = Path(os.environ.get('VORA_TEST_EXE', NATIVE / ('dist/vora.exe' if os.name == 'nt' else 'dist/vora')))
 
 def step(name, tool, args):
     return f'{name} = {tool}({json.dumps(args)})\n'

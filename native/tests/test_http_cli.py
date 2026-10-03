@@ -4,11 +4,13 @@ import json
 import subprocess
 import tempfile
 import threading
+import time
 import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 NATIVE = Path(__file__).resolve().parents[1]
+EXE = Path(os.environ.get('VORA_TEST_EXE', NATIVE / ('dist/vora.exe' if os.name == 'nt' else 'dist/vora')))
 
 
 class NativeHTTPTests(unittest.TestCase):
@@ -17,15 +19,20 @@ class NativeHTTPTests(unittest.TestCase):
         cls.requests = []
         cls.status = 200
         cls.payload = {}
+        cls.delay = 0
         class Handler(BaseHTTPRequestHandler):
             def do_POST(self):
                 cls.requests.append(json.loads(self.rfile.read(int(self.headers['Content-Length']))))
+                time.sleep(cls.delay)
                 self.send_response(cls.status)
                 self.send_header('Content-Type', 'application/json')
                 if cls.status == 302:
                     self.send_header('Location', '/redirected')
                 self.end_headers()
-                self.wfile.write(json.dumps(cls.payload).encode())
+                try:
+                    self.wfile.write(json.dumps(cls.payload).encode())
+                except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
+                    pass  # Client deliberately times out or stops oversized reads.
             def log_message(self, *args):
                 pass
         cls.server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
@@ -40,6 +47,7 @@ class NativeHTTPTests(unittest.TestCase):
 
     def setUp(self):
         type(self).requests = []
+        type(self).delay = 0
         type(self).status = 200
         type(self).payload = {'choices': [{'message': {'content': 'REAL FIXTURE OUTPUT'}, 'finish_reason': 'stop'}]}
 
@@ -51,7 +59,7 @@ class NativeHTTPTests(unittest.TestCase):
             input_file = folder / 'input.txt'
             input_file.write_text('Quoted "text"\nsecond line {x}', encoding='utf-8-sig', newline='')
             trace = folder / 'trace.json'
-            result = subprocess.run([str(NATIVE / ('dist/vora.exe' if os.name == 'nt' else 'dist/vora')), 'run', str(workflow),
+            result = subprocess.run([str(EXE), 'run', str(workflow),
                                      '--input-file', str(input_file), '--trace', str(trace),
                                      '--endpoint', f'http://127.0.0.1:{self.server.server_port}/v1/chat/completions',
                                      *args], capture_output=True, text=True, timeout=15)
@@ -118,6 +126,21 @@ class NativeHTTPTests(unittest.TestCase):
         self.assertIn('SIMULATED DEMO', result.stdout)
         self.assertEqual(len(self.requests), 0)
 
+    def test_deep_and_oversized_http_responses_fail_closed(self):
+        for payload in ({'nested': [[[[0]]]]}, {'choices': [{'message': {'content': 'x' * (4 * 1024 * 1024)}, 'finish_reason': 'stop'}]}):
+            if 'nested' in payload:
+                nested = 0
+                for _ in range(100):
+                    nested = [nested]
+                payload = {'nested': nested}
+            with self.subTest(kind=list(payload)[0]):
+                type(self).requests = []
+                type(self).payload = payload
+                result, events = self.invoke('--retries', '2')
+                self.assertEqual(result.returncode, 1)
+                self.assertEqual(len(self.requests), 1)
+                self.assertEqual(events[-1]['event'], 'workflow_failed')
+
     def test_critique_validation_blocks_downstream_http_call(self):
         source = ('workflow Test(input):\nagent a = "role"\nreview = a("{input}")\n'
                   'final = a("{review}")\nvalidate review as critique\nreturn final\n')
@@ -155,6 +178,23 @@ class NativeHTTPTests(unittest.TestCase):
     def test_reasoning_budget_must_leave_output_capacity(self):
         result, _ = self.invoke('--reasoning-budget', '256', '--max-tokens', '256')
         self.assertEqual(result.returncode, 1)
+        self.assertEqual(len(self.requests), 0)
+
+    def test_timeout_fails_and_is_budgeted(self):
+        type(self).delay = 0.4
+        start = time.monotonic()
+        result, events = self.invoke('--http-timeout-ms', '50', '--retries', '1')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertLess(time.monotonic() - start, 5)
+        self.assertEqual(events[-1]['calls'], 2)
+        self.assertEqual(len(self.requests), 2)
+        time.sleep(0.5)  # Let delayed fixture handlers finish before another test.
+
+    def test_invalid_timeout_makes_no_requests(self):
+        for value in ('0', '120001', '-1'):
+            with self.subTest(value=value):
+                result, _ = self.invoke('--http-timeout-ms', value)
+                self.assertNotEqual(result.returncode, 0)
         self.assertEqual(len(self.requests), 0)
 
 

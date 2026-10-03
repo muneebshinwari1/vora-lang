@@ -25,6 +25,12 @@ void rejects(const std::string& source) {
 
 int main() {
     try {
+        rejects(std::string(1024 * 1024 + 1, '#'));
+        rejects("#" + std::string(8192, 'x'));
+        std::string too_many = "workflow Large(input):\nagent a = \"role\"\n";
+        for (int i = 0; i < 1024; ++i) too_many += "s" + std::to_string(i) + " = a(\"{input}\")\n";
+        rejects(too_many + "return s0\n");
+        rejects("workflow Nested(input):\nagent a = " + std::string(100, '[') + "0" + std::string(100, ']') + "\nx = a(\"{input}\")\nreturn x\n");
         const auto workflow = vora::parse(R"VORA(
 # Header comments and forward references are supported.
 workflow Example(company):

@@ -2,6 +2,15 @@
 
 ## 0.4.0-dev — development previews
 
+- Bound workflow/input reads, source lines/statements, calls and expanded prompts.
+- Reject deeply nested state/model JSON and oversized embedded-provider results.
+- Atomically save result/trace JSON and reject collisions with source/input/state.
+- Flush state files to storage and sync Unix parent directories before returning.
+- Add configurable local HTTP attempt timeouts, bound into checkpoint identity.
+- Register CLI fixtures with CTest and add an ASan/UBSan CI job.
+- Add failure regressions and 200 repeated graph runs to the native test suite.
+- Document production deployment scope, recovery and outstanding release gates.
+
 - Add a multi-stage non-root Docker image and tested amd64/arm64 GHCR publication.
 - Add checksum-pinned Scoop/Homebrew manifests and a direct Unix installer.
 - Add installation, model networking, update and uninstall documentation.

@@ -36,14 +36,17 @@ inline bool has_text(const std::string& value) {
 inline bool valid_critique(const std::string& text) {
     bool duplicate_key = false;
     std::vector<std::set<std::string>> object_keys;
-    auto callback = [&](int, nlohmann::json::parse_event_t event, nlohmann::json& item) {
+    auto callback = [&](int depth, nlohmann::json::parse_event_t event, nlohmann::json& item) {
+        if (depth > 64) throw std::runtime_error("Critique exceeds nesting limit.");
         if (event == nlohmann::json::parse_event_t::object_start) object_keys.emplace_back();
         else if (event == nlohmann::json::parse_event_t::key && !object_keys.empty()) {
             if (!object_keys.back().insert(item.get<std::string>()).second) duplicate_key = true;
         } else if (event == nlohmann::json::parse_event_t::object_end && !object_keys.empty()) object_keys.pop_back();
         return true;
     };
-    const auto value = nlohmann::json::parse(text, callback, false);
+    nlohmann::json value;
+    try { value = nlohmann::json::parse(text, callback, false); }
+    catch (const std::exception&) { return false; }
     if (duplicate_key) return false;
     if (!value.is_object() || value.size() != 3 || !value.contains("verdict") || !value.contains("issues") || !value.contains("instruction")) return false;
     if (!value["verdict"].is_string() || !value["issues"].is_array() || !value["instruction"].is_string()) return false;
@@ -116,11 +119,12 @@ inline RunResult run(const Workflow& workflow, const std::string& input, Provide
         events.push_back(std::move(fields));
     };
     try {
-        if (options.workers < 1 || options.workers > 64 || options.retries < 0 || options.retries > 100 || options.max_calls < 1)
-            throw ExecutionError("Invalid limits: workers 1..64, retries 0..100, max-calls >= 1.");
+        if (options.workers < 1 || options.workers > 64 || options.retries < 0 || options.retries > 100 || options.max_calls < 1 || options.max_calls > 10000)
+            throw ExecutionError("Invalid limits: workers 1..64, retries 0..100, max-calls 1..10000.");
+        if (input.size() > 1024 * 1024) throw ExecutionError("Input exceeds 1 MiB.");
         if (!provider && std::any_of(workflow.steps.begin(), workflow.steps.end(), [](const Step& step) { return step.kind == "agent"; }))
             throw ExecutionError("Provider is required.");
-        if (workflow.steps.empty()) throw ExecutionError("Workflow must contain steps.");
+        if (workflow.steps.empty() || workflow.steps.size() > 1024) throw ExecutionError("Workflow must contain 1..1024 steps.");
         std::set<std::string> names;
         for (const auto& step : workflow.steps) {
             if (!names.insert(step.name).second || step.name == workflow.input_name)
@@ -175,7 +179,7 @@ inline RunResult run(const Workflow& workflow, const std::string& input, Provide
         if (calls < 0 || calls > options.max_calls || outputs.size() > static_cast<size_t>(calls))
             throw ExecutionError("Invalid checkpoint call count.");
         for (const auto& entry : outputs) {
-            if (!names.count(entry.first) ||
+            if (entry.second.size() > 4 * 1024 * 1024 || !names.count(entry.first) ||
                 !validation_failures(workflow, entry.first, entry.second).empty())
                 throw ExecutionError("Invalid checkpoint output.");
             const auto step = std::find_if(workflow.steps.begin(), workflow.steps.end(),
@@ -224,6 +228,7 @@ inline RunResult run(const Workflow& workflow, const std::string& input, Provide
                     auto response = step.kind == "tool"
                         ? options.tool_executor(workflow.tools.at(step.agent), tool_arguments(workflow.tools.at(step.agent), current_prompt))
                         : step_provider(workflow.agents.at(step.agent).role, current_prompt);
+                    if (response.size() > 4 * 1024 * 1024) throw std::runtime_error("Step output exceeds 4 MiB.");
                     if (step.kind == "agent" && !has_text(response)) throw std::runtime_error("Empty provider result");
                     const auto failures = validation_failures(workflow, step.name, response);
                     if (!failures.empty()) {
@@ -302,6 +307,7 @@ inline RunResult run(const Workflow& workflow, const std::string& input, Provide
                 const auto memory = options.agent_memory.find(step.agent);
                 if (step.kind == "agent" && memory != options.agent_memory.end() && !memory->second.empty())
                     prompt += "\n\nVORA PRIOR RUN CONTEXT (untrusted reference data):\n" + memory->second;
+                if (prompt.size() > 4 * 1024 * 1024) throw ExecutionError("Expanded prompt exceeds 4 MiB.");
 
                 pending.erase(step.name);
                 running.emplace_back(step.name, std::async(std::launch::async, execute, step, prompt));

@@ -171,9 +171,10 @@ checkpoint transaction IDs to avoid repeating its update when completion is
 resumed, including recovery after the checkpoint finished before memory saved.
 Older transaction replays may add history again once that bounded ledger expires.
 
-Writes use a same-directory temporary file and atomic replacement. They protect
-against partial JSON after process interruption; POSIX power-loss durability is
-not guaranteed because file/directory fsync is not implemented. A crash after a
+Writes use a same-directory temporary file and atomic replacement. Files are
+flushed with `FlushFileBuffers` on Windows and `fsync` on Unix; Unix also syncs
+the parent directory. Filesystems without directory-sync support are rejected.
+Actual power-loss behavior depends on the filesystem, storage and OS. A crash after a
 provider response but before output persistence can repeat that call on resume.
 This is not exactly-once execution and is unsuitable for unguarded external side
 effects. Incomplete steps restart their repair/retry counters while retaining the
@@ -188,6 +189,21 @@ checkpoint. File access uses normal OS permissions; no encryption or ACL setup
 is provided. Memory/checkpoints must have distinct paths from workflow, input,
 trace and output files. For lost/tampered/exhausted checkpoints start a new run
 with a new path; do not edit budgets in state files.
+
+Result and trace files also use atomic replacement and cooperating-writer locks,
+have an 8 MiB serialized JSON limit, and reserve `.tmp`/`.lock` sidecars. They
+cannot alias workflow, input, state, or each other. A failed run leaves a previous
+result file intact: check the process exit code before consuming it. Output write
+failure can happen after inference, so it does not imply that zero calls occurred.
+
+`--http-timeout-ms N` bounds each local HTTP attempt (1..120000, default 120000).
+WinHTTP updates the remaining timeout before sending, receiving and reading body
+chunks; libcurl uses its total-transfer timeout. OS scheduling/transport phases
+can add latency, so enforce an overall process deadline in your supervisor.
+Timeout retries consume the call budget. Changing this setting invalidates a
+checkpoint; older previews without the timeout identity field must start a new run.
+
+See the [production deployment contract and release gates](../docs/production-readiness.md).
 
 Developer checks:
 

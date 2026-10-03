@@ -10,6 +10,9 @@
 #define NOMINMAX
 #endif
 #include <windows.h>
+#else
+#include <fcntl.h>
+#include <unistd.h>
 #endif
 
 namespace vora {
@@ -28,21 +31,17 @@ public:
 };
 
 inline nlohmann::json read_state(const std::filesystem::path& path) {
-    std::ifstream file(path, std::ios::binary);
-    if (!file) throw std::runtime_error("Cannot read state file: " + path.string());
-    std::string raw;
-    char buffer[8192];
-    while (file.read(buffer, sizeof(buffer)) || file.gcount()) {
-        raw.append(buffer, static_cast<size_t>(file.gcount()));
-        if (raw.size() > 8 * 1024 * 1024) throw std::runtime_error("State file exceeds 8 MiB.");
-    }
-    if (!file.eof()) throw std::runtime_error("Failed to read state file.");
-    return nlohmann::json::parse(raw);
+    const auto raw = read_bounded(path.string(), 8 * 1024 * 1024);
+    auto depth_limit = [](int depth, nlohmann::json::parse_event_t, nlohmann::json&) {
+        if (depth > 64) throw std::runtime_error("State exceeds nesting limit.");
+        return true;
+    };
+    return nlohmann::json::parse(raw, depth_limit);
 }
 
 inline void write_state(const std::filesystem::path& path, const nlohmann::json& data) {
     const auto raw = data.dump(2);
-    if (raw.size() > 8 * 1024 * 1024) throw std::runtime_error("State exceeds 8 MiB.");
+    if (raw.size() >= 8 * 1024 * 1024) throw std::runtime_error("State exceeds 8 MiB including its newline.");
     const std::filesystem::path temporary(path.string() + ".tmp");
     try {
         std::ofstream file(temporary, std::ios::binary | std::ios::trunc);
@@ -53,10 +52,39 @@ inline void write_state(const std::filesystem::path& path, const nlohmann::json&
         file.close();
         if (!file) throw std::runtime_error("Cannot close state file.");
 #ifdef _WIN32
+        const HANDLE flush_handle = CreateFileW(temporary.c_str(), GENERIC_WRITE, 0, nullptr,
+            OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (flush_handle == INVALID_HANDLE_VALUE) throw std::runtime_error("Cannot open state for durable flush.");
+        const bool flushed = FlushFileBuffers(flush_handle) != 0;
+        CloseHandle(flush_handle);
+        if (!flushed) throw std::runtime_error("Cannot durably flush state file.");
         if (!MoveFileExW(temporary.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
             throw std::runtime_error("Cannot replace state file.");
 #else
-        std::filesystem::rename(temporary, path);
+        const int fd = ::open(temporary.c_str(), O_WRONLY);
+        if (fd < 0) throw std::runtime_error("Cannot open state for durable flush.");
+        const int flushed = ::fsync(fd);
+        const int closed = ::close(fd);
+        if (flushed != 0 || closed != 0) throw std::runtime_error("Cannot durably flush state file.");
+        const auto parent = path.parent_path().empty() ? std::filesystem::path(".") : path.parent_path();
+        const int directory = ::open(parent.c_str(), O_RDONLY | O_DIRECTORY);
+        if (directory < 0) throw std::runtime_error("Cannot open state directory for durable flush.");
+        // Probe support before replacing the old file. Some network filesystems
+        // do not implement directory fsync and are unsupported for this contract.
+        if (::fsync(directory) != 0) {
+            ::close(directory);
+            throw std::runtime_error("State directory does not support durable flush.");
+        }
+        std::error_code rename_error;
+        std::filesystem::rename(temporary, path, rename_error);
+        if (rename_error) {
+            ::close(directory);
+            throw std::runtime_error("Cannot replace state file.");
+        }
+        const int synced = ::fsync(directory);
+        const int directory_closed = ::close(directory);
+        if (synced != 0 || directory_closed != 0)
+            throw std::runtime_error("State replaced, but directory durability is uncertain.");
 #endif
     } catch (...) {
         std::error_code error;

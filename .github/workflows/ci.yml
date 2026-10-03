@@ -51,11 +51,6 @@ jobs:
         run: cmake --build native/build --parallel 2
       - name: Native tests
         run: ctest --test-dir native/build --output-on-failure
-      - name: HTTP and CLI fixture tests
-        run: |
-          python3 native/tests/test_http_cli.py
-          python3 native/tests/test_state_cli.py
-          python3 native/tests/test_tools_cli.py
       - name: Install and package
         run: |
           cmake --install native/build --prefix native/stage
@@ -84,11 +79,6 @@ jobs:
         run: cmake --build native/build --config Release --parallel 2
       - name: Native tests
         run: ctest --test-dir native/build -C Release --output-on-failure
-      - name: HTTP and CLI fixture tests
-        run: |
-          python native/tests/test_http_cli.py
-          python native/tests/test_state_cli.py
-          python native/tests/test_tools_cli.py
       - name: Install and package
         run: |
           cmake --install native/build --config Release --prefix native/stage
@@ -103,6 +93,22 @@ jobs:
           path: native/packages/vora-*.zip
           if-no-files-found: error
           retention-days: 30
+
+  native-sanitizers:
+    runs-on: ubuntu-latest
+    env:
+      ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
+      UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install HTTP dependencies
+        run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev
+      - name: Configure instrumented build
+        run: cmake -S native -B native/build-sanitizers -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_COMPILER=clang++ -DVORA_SANITIZERS=ON
+      - name: Build
+        run: cmake --build native/build-sanitizers --parallel 2
+      - name: Instrumented native and protocol tests
+        run: ctest --test-dir native/build-sanitizers --output-on-failure
 
   python-prototype:
     runs-on: ubuntu-latest

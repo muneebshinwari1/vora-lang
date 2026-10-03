@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 
 NATIVE = Path(__file__).resolve().parents[1]
-EXE = NATIVE / ('dist/vora.exe' if os.name == 'nt' else 'dist/vora')
+EXE = Path(os.environ.get('VORA_TEST_EXE', NATIVE / ('dist/vora.exe' if os.name == 'nt' else 'dist/vora')))
 
 class StateCLI(unittest.TestCase):
     def setUp(self):
@@ -73,6 +73,37 @@ class StateCLI(unittest.TestCase):
         self.memory.write_text('{broken', encoding='utf-8')
         self.assertNotEqual(self.run_cli('--memory', self.memory).returncode, 0)
         self.assertEqual(self.memory.read_text(), '{broken')
+
+    def test_result_and_trace_cannot_overwrite_source_or_each_other(self):
+        before = self.workflow.read_bytes()
+        for option in ('--trace', '--output'):
+            with self.subTest(option=option):
+                result = self.run_cli(option, self.workflow)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(self.workflow.read_bytes(), before)
+        self.assertNotEqual(self.run_cli('--trace', self.trace, '--output', self.trace).returncode, 0)
+        self.assertFalse(self.trace.exists())
+
+    def test_locked_output_is_preserved(self):
+        result_path = self.folder / 'result.json'
+        result_path.write_text('previous result', encoding='utf-8')
+        Path(str(result_path) + '.lock').mkdir()
+        result = self.run_cli('--output', result_path)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(result_path.read_text(), 'previous result')
+
+    def test_oversized_input_and_source_are_rejected(self):
+        input_file = self.folder / 'input.txt'
+        input_file.write_bytes(b'x' * (1024 * 1024 + 1))
+        self.assertNotEqual(self.run_cli('--input-file', input_file).returncode, 0)
+        self.workflow.write_bytes(b'#' * (1024 * 1024 + 1))
+        self.assertNotEqual(self.run_cli().returncode, 0)
+
+    def test_deep_state_is_rejected_without_modification(self):
+        raw = '[' * 100 + '0' + ']' * 100
+        self.memory.write_text(raw, encoding='utf-8')
+        self.assertNotEqual(self.run_cli('--memory', self.memory).returncode, 0)
+        self.assertEqual(self.memory.read_text(), raw)
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)

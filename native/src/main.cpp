@@ -9,10 +9,8 @@ using nlohmann::json;
 
 static void save_json(const std::string& path, const json& data) {
     if (path.empty()) return;
-    std::ofstream file(path, std::ios::binary);
-    if (!file) throw std::runtime_error("Cannot write output file: " + path);
-    file << data.dump(2) << '\n';
-    if (!file) throw std::runtime_error("Failed to write output file: " + path);
+    vora::StateLock lock(path);
+    vora::write_state(path, data);
 }
 
 static int integer(const std::string& value) {
@@ -23,10 +21,7 @@ static int integer(const std::string& value) {
 }
 
 static std::string read_input(const std::string& path) {
-    std::ifstream file(path, std::ios::binary);
-    if (!file) throw std::runtime_error("Cannot read input file.");
-    std::string input((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-    if (input.size() > 1024 * 1024) throw std::runtime_error("Input file exceeds 1 MiB.");
+    std::string input = vora::read_bounded(path, 1024 * 1024);
     if (input.compare(0, 3, "\xef\xbb\xbf") == 0) input.erase(0, 3);
     return input;
 }
@@ -37,6 +32,7 @@ int main(int argc, char** argv) {
     SetConsoleCP(CP_UTF8);
 #endif
     std::string trace, output;
+    bool trace_path_validated = false;
     try {
         if (argc < 2 || std::string(argv[1]) == "--help") {
             std::cout << "Vora 0.4.0-dev - native C++ agent workflow engine\n"
@@ -44,7 +40,7 @@ int main(int argc, char** argv) {
                       << "vora run FILE --input TEXT [--provider local|demo] [--endpoint URL]\n"
                       << "  Use --input-file FILE instead for saved or multiline text.\n"
                       << "  [--model NAME] [--max-tokens 256] [--reasoning-budget 0] [--workers 4] [--retries 0]\n"
-                      << "  [--max-calls 20] [--trace FILE.json] [--output FILE.json]\n"
+                      << "  [--max-calls 20] [--http-timeout-ms 120000] [--trace FILE.json] [--output FILE.json]\n"
                       << "  [--memory FILE.json] [--checkpoint FILE.json | --resume FILE.json]\n"
                       << "  [--workspace DIR] [--allow-tools read_file,list_files,search_file,text_stats,json_select]\n"
                       << "Default: REAL local model at http://127.0.0.1:18080/v1/chat/completions\n"
@@ -57,7 +53,7 @@ int main(int argc, char** argv) {
         std::string input, provider_name = "local", endpoint = "http://127.0.0.1:18080/v1/chat/completions", model = "local";
         bool has_input = false, mermaid = false;
         std::string input_path;
-        int tokens = 256, reasoning = 0;
+        int tokens = 256, reasoning = 0, http_timeout_ms = 120000;
         vora::RunOptions limits;
         std::string memory_path, checkpoint_path, workspace;
         std::set<std::string> allowed_tools;
@@ -79,6 +75,7 @@ int main(int argc, char** argv) {
             else if (option == "--workers") limits.workers = integer(value);
             else if (option == "--retries") limits.retries = integer(value);
             else if (option == "--max-calls") limits.max_calls = integer(value);
+            else if (option == "--http-timeout-ms") http_timeout_ms = integer(value);
             else if (option == "--workspace") workspace = value;
             else if (option == "--allow-tools") {
                 std::istringstream names(value);
@@ -131,11 +128,11 @@ int main(int argc, char** argv) {
         if (!uses_agents && (provider_name == "local" || provider_name == "demo")) {
             std::cerr << "DETERMINISTIC TOOLS: no AI inference.\n";
         } else if (provider_name == "local") {
-            provider = vora::LocalProvider(endpoint, model, tokens, reasoning);
-            limits.provider_for_step = [endpoint, model, tokens, reasoning, &workflow](const vora::Step& step) -> vora::Provider {
+            provider = vora::LocalProvider(endpoint, model, tokens, reasoning, false, http_timeout_ms);
+            limits.provider_for_step = [endpoint, model, tokens, reasoning, http_timeout_ms, &workflow](const vora::Step& step) -> vora::Provider {
                 bool critique = false;
                 for (const auto& rule : workflow.validations) if (rule.step == step.name && rule.kind == "critique") critique = true;
-                return vora::LocalProvider(endpoint, model, tokens, reasoning, critique);
+                return vora::LocalProvider(endpoint, model, tokens, reasoning, critique, http_timeout_ms);
             };
             std::cerr << "REAL local model inference; " << workflow.steps.size() << " steps.\n";
         } else if (provider_name == "demo") {
@@ -154,14 +151,15 @@ int main(int argc, char** argv) {
             return value;
         };
         std::set<std::string> protected_paths;
-        for (const auto& path : {std::string(argv[2]), input_path, trace, output})
+        for (const auto& path : {std::string(argv[2]), input_path})
             if (!path.empty()) protected_paths.insert(normalized_path(path));
-        for (const auto& path : {memory_path, checkpoint_path}) {
+        for (const auto& path : {memory_path, checkpoint_path, trace, output}) {
             if (path.empty()) continue;
             for (const auto& reserved : {path, path + ".tmp", path + ".lock"})
                 if (!protected_paths.insert(normalized_path(reserved)).second)
                     throw std::runtime_error("State files and sidecars must have distinct paths from other files.");
         }
+        trace_path_validated = true;
         std::unique_ptr<vora::StateLock> memory_lock, checkpoint_lock;
         nlohmann::json memory = vora::empty_memory();
         if (!memory_path.empty()) {
@@ -172,6 +170,7 @@ int main(int argc, char** argv) {
         nlohmann::json identity = {{"workflow", vora::workflow_identity(workflow)}, {"input", input},
             {"provider", provider_name}, {"endpoint", endpoint}, {"model", model},
             {"tokens", tokens}, {"reasoning", reasoning}, {"retries", limits.retries},
+            {"http_timeout_ms", http_timeout_ms},
             {"max_calls", limits.max_calls}, {"memory_enabled", !memory_path.empty()},
             {"workspace", tools->workspace()}, {"allowed_tools", allowed_tools}, {"tool_api", 1}};
         nlohmann::json checkpoint;
@@ -222,7 +221,7 @@ int main(int argc, char** argv) {
         std::cout << result.result << '\n';
         return 0;
     } catch (const vora::ExecutionError& error) {
-        try { save_json(trace, error.events); } catch (...) { std::cerr << "Could not write failure trace.\n"; }
+        try { if (trace_path_validated) save_json(trace, error.events); } catch (...) { std::cerr << "Could not write failure trace.\n"; }
         std::cerr << "Execution failed: " << error.what() << '\n';
         return 1;
     } catch (const std::exception& error) {

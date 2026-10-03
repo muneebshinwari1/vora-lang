@@ -8,6 +8,8 @@ Write compact declarative workflows for local AI agent orchestration. Vora valid
 
 **Status: experimental 0.4.0-dev.** Windows, Linux and macOS are covered by CI. The native runtime needs no Python interpreter. Python is development test tooling and powers the [older prototype](PYTHON_PROTOTYPE.md).
 
+Production hardening is tracked against an explicit [deployment contract and release gates](docs/production-readiness.md). Passing CI alone does not promote a preview to a stable production release.
+
 ## An agent workflow in eight lines
 
 ```text

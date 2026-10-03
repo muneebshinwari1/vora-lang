@@ -13,6 +13,7 @@
 #include <utility>
 #include <vector>
 #include <nlohmann/json.hpp>
+#include "vora_io.hpp"
 
 namespace vora {
 
@@ -114,9 +115,15 @@ inline std::string trim(const std::string& value) {
 inline std::string string_value(const std::string& value, std::size_t line) {
     nlohmann::json parsed;
     try {
-        parsed = nlohmann::json::parse(value);
+        auto depth_limit = [](int depth, nlohmann::json::parse_event_t, nlohmann::json&) {
+            if (depth > 64) throw std::runtime_error("Source value exceeds nesting limit.");
+            return true;
+        };
+        parsed = nlohmann::json::parse(value, depth_limit);
     } catch (const nlohmann::json::exception&) {
         fail(line, "use a double-quoted JSON string");
+    } catch (const std::runtime_error&) {
+        fail(line, "source value exceeds nesting limit");
     }
     if (!parsed.is_string()) {
         fail(line, "expected a non-empty string");
@@ -137,6 +144,7 @@ inline bool dependencies_ready(const Step& step, const std::set<std::string>& vi
 
 inline Workflow parse(const std::string& source) {
     using parser_detail::fail;
+    if (source.size() > 1024 * 1024) fail(1, "workflow exceeds 1 MiB");
     static const std::regex header_pattern(
         R"(^workflow ([A-Za-z_][A-Za-z0-9_]*)\(([A-Za-z_][A-Za-z0-9_]*)\):$)");
     static const std::regex agent_pattern(R"(^agent ([A-Za-z_][A-Za-z0-9_]*) = (.+)$)");
@@ -160,9 +168,11 @@ inline Workflow parse(const std::string& source) {
     std::size_t line_number = 0;
     while (std::getline(input, raw_line)) {
         ++line_number;
+        if (raw_line.size() > 8192) fail(line_number, "source line exceeds 8192 bytes");
         auto line = parser_detail::trim(raw_line);
         if (!line.empty() && line.front() != '#') {
             lines.emplace_back(line_number, std::move(line));
+            if (lines.size() > 1024) fail(line_number, "workflow exceeds 1024 statements");
         }
     }
     if (lines.empty()) {
@@ -310,16 +320,7 @@ inline Workflow parse(const std::string& source) {
 }
 
 inline Workflow load(const std::string& path) {
-    std::ifstream file(path, std::ios::binary);
-    if (!file) {
-        throw std::runtime_error("Cannot open workflow file: " + path);
-    }
-    std::ostringstream contents;
-    contents << file.rdbuf();
-    if (file.bad()) {
-        throw std::runtime_error("Cannot read workflow file: " + path);
-    }
-    return parse(contents.str());
+    return parse(read_bounded(path, 1024 * 1024));
 }
 
 inline nlohmann::json plan(const Workflow& workflow) {

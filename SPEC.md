@@ -87,3 +87,14 @@ CLI opt-in agent memory supplies bounded prior successful context. Checkpoints
 restore validated outputs and consumed calls, bind workflow/input/provider/tool
 configuration, and may replay an interrupted unfinished call. These features
 extend runtime behavior rather than add persistence statements to source syntax.
+
+## Native resource limits (0.4 development line)
+
+Workflow source and run input are limited to 1 MiB each. A source line is at most
+8192 bytes, and a workflow has at most 1024 non-comment statements including its
+header. The embedded runtime accepts at most 1024 steps, 1..64 workers, 0..100
+transient retries and 1..10000 total calls. A step output and expanded prompt are
+at most 4 MiB; the HTTP adapter separately caps the serialized request/response
+at 4 MiB. State and result/trace JSON are capped at 8 MiB, with state and HTTP
+JSON limited to nesting depth 64. These are separate limits: a workflow that
+passes parsing can still exceed an execution or persistence limit.
