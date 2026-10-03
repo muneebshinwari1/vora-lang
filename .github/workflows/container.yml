@@ -1,0 +1,72 @@
+name: Container package
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: container-development
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && github.event.workflow_run.head_branch == 'main'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            arch: amd64
+          - os: ubuntu-24.04-arm
+            arch: arm64
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+      packages: write
+    env:
+      IMAGE: ghcr.io/muneebshinwari1/vora-lang
+      REVISION: ${{ github.event.workflow_run.head_sha }}
+      ARCH: ${{ matrix.arch }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.REVISION }}
+      - name: Build and test container
+        run: |
+          docker build --build-arg VORA_REVISION="$REVISION" -t "$IMAGE:sha-$REVISION-$ARCH" .
+          docker run --rm "$IMAGE:sha-$REVISION-$ARCH" --version
+          docker run --rm "$IMAGE:sha-$REVISION-$ARCH" check /opt/vora/share/vora/examples/quickstart-fast.vora
+          docker run --rm --network none "$IMAGE:sha-$REVISION-$ARCH" run /opt/vora/share/vora/examples/quickstart-fast.vora --provider demo --input "Container smoke test"
+          docker run --rm --network none -v "$PWD:/workspace:ro" "$IMAGE:sha-$REVISION-$ARCH" run /opt/vora/share/vora/examples/file-stats.vora --input README.md --workspace /workspace --allow-tools read_file,text_stats
+      - name: Publish tested development image
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          docker push "$IMAGE:sha-$REVISION-$ARCH"
+          docker logout ghcr.io
+      - name: Publication summary
+        run: |
+          printf 'Tested and published `%s:sha-%s-%s`.\n' "$IMAGE" "$REVISION" "$ARCH" >> "$GITHUB_STEP_SUMMARY"
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    env:
+      IMAGE: ghcr.io/muneebshinwari1/vora-lang
+      REVISION: ${{ github.event.workflow_run.head_sha }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Publish multi-platform manifest
+        run: |
+          printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          docker buildx imagetools create --tag "$IMAGE:sha-$REVISION" "$IMAGE:sha-$REVISION-amd64" "$IMAGE:sha-$REVISION-arm64"
+          docker buildx imagetools create --tag "$IMAGE:dev" "$IMAGE:sha-$REVISION"
+          docker buildx imagetools inspect "$IMAGE:dev"
+          docker logout ghcr.io

@@ -1,0 +1,15 @@
+{
+    "version": "0.4.0-dev.1",
+    "description": "Native C++17 language for local AI agent workflows (experimental preview)",
+    "homepage": "https://github.com/muneebshinwari1/vora-lang",
+    "license": "MIT",
+    "architecture": {
+        "64bit": {
+            "url": "https://github.com/muneebshinwari1/vora-lang/releases/download/v0.4.0-dev.1/vora-Windows-X64.zip",
+            "hash": "e3614fdf270719f8915dd1bcd36923623f2c094a1b2daa691814182adbc5acf0",
+            "extract_dir": "vora-0.4.0-win64"
+        }
+    },
+    "bin": "bin\\vora.exe",
+    "notes": "Experimental preview. Models are installed separately. Examples and docs are in share/vora. See the installation guide for model-free and real-inference commands."
+}

@@ -9,6 +9,31 @@ permissions:
   contents: read
 
 jobs:
+  homebrew:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      HOMEBREW_NO_AUTO_UPDATE: '1'
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install and test source formula
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = Linux ]; then eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"; fi
+          brew tap muneebshinwari1/vora "$GITHUB_WORKSPACE"
+          if brew commands | rg -q '^trust$'; then brew trust --formula muneebshinwari1/vora/vora; fi
+          brew install --build-from-source muneebshinwari1/vora/vora
+          brew test muneebshinwari1/vora/vora
+      - name: Verify direct installer
+        shell: bash
+        run: |
+          sh -n scripts/install.sh
+          VORA_INSTALL_DIR="$RUNNER_TEMP/vora-preview" sh scripts/install.sh
+          "$RUNNER_TEMP/vora-preview/bin/vora" --version
+          if VORA_INSTALL_DIR="$RUNNER_TEMP/vora-preview" sh scripts/install.sh; then echo 'Existing install unexpectedly overwritten'; exit 1; fi
   native-portable-core:
     strategy:
       fail-fast: false

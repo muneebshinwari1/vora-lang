@@ -25,6 +25,16 @@ Placeholders declare dependencies. Independent steps can run concurrently. Inval
 
 ## Try it without a model
 
+For ready-to-install packages, see the [installation guide](docs/installation.md):
+Windows Scoop, macOS/Linux Homebrew, checksum-verified direct archives and
+multi-platform Docker images on GitHub Packages.
+
+```sh
+docker run --rm --network none ghcr.io/muneebshinwari1/vora-lang:dev run /opt/vora/share/vora/examples/quickstart-fast.vora --provider demo --input "Hello developers"
+```
+
+To build from source:
+
 ```sh
 git clone https://github.com/muneebshinwari1/vora-lang.git
 cd vora-lang

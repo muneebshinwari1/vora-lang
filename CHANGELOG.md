@@ -2,6 +2,10 @@
 
 ## 0.4.0-dev — development previews
 
+- Add a multi-stage non-root Docker image and tested amd64/arm64 GHCR publication.
+- Add checksum-pinned Scoop/Homebrew manifests and a direct Unix installer.
+- Add installation, model networking, update and uninstall documentation.
+
 - Add Linux/macOS libcurl HTTP support alongside Windows WinHTTP.
 - Add CMake installation and ZIP/TGZ engine packages.
 - Add bounded opt-in agent memory and configuration-bound checkpoint/resume.
