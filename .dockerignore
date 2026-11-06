@@ -4,6 +4,7 @@
 !SPEC.md
 !SECURITY.md
 !native/
+native/**
 !native/CMakeLists.txt
 !native/README.md
 !native/include/
@@ -13,7 +14,11 @@
 !native/vendor/
 !native/vendor/**
 !native/tests/
+native/tests/**
 !native/tests/*.cpp
+!native/tests/*.py
+!native/tests/fixtures/
+!native/tests/fixtures/**
 !native/docs/
 !native/docs/*.md
 !native/examples/
@@ -22,5 +27,8 @@
 !native/review.vora
 
 !docs/
+docs/**
 !docs/compatibility.md
 !docs/production-readiness.md
+!docs/agent-graphs.md
+!docs/human-approval.md

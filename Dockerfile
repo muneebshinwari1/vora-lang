@@ -1,5 +1,5 @@
 FROM debian:bookworm-slim AS build
-RUN apt-get update && apt-get install -y --no-install-recommends cmake g++ make libcurl4-openssl-dev ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends cmake g++ make python3 libcurl4-openssl-dev ca-certificates && rm -rf /var/lib/apt/lists/*
 WORKDIR /src
 COPY native/ native/
 COPY LICENSE SPEC.md SECURITY.md ./
@@ -8,6 +8,15 @@ RUN cmake -S native -B /build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=
     && cmake --build /build --parallel 2 \
     && ctest --test-dir /build --output-on-failure \
     && cmake --install /build
+
+FROM build AS sanitizers
+RUN apt-get update && apt-get install -y --no-install-recommends clang \
+    && rm -rf /var/lib/apt/lists/*
+RUN cmake -S native -B /sanitizers -DCMAKE_BUILD_TYPE=Debug \
+        -DCMAKE_CXX_COMPILER=clang++ -DVORA_SANITIZERS=ON \
+    && cmake --build /sanitizers --parallel 2 \
+    && ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
+       ctest --test-dir /sanitizers --output-on-failure
 
 FROM debian:bookworm-slim
 ARG VORA_REVISION=unknown

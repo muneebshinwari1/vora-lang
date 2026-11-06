@@ -231,6 +231,8 @@ inline RunResult run(const Workflow& workflow, const std::string& input, Provide
             if (!state.contains("round") || !state["round"].is_number_integer() || !state.contains("phase") || !state["phase"].is_string() ||
                 !state.contains("draft") || !state["draft"].is_string() || !state.contains("critique") || !state["critique"].is_string())
                 throw ExecutionError("Invalid review checkpoint fields.");
+            if (state["round"] < 1 || state["round"] > review_rules.at(entry.key()).max_rounds)
+                throw ExecutionError("Invalid review checkpoint round.");
             const int round = state["round"].get<int>();
             const auto phase = state["phase"].get<std::string>();
             const auto draft = state["draft"].get<std::string>(), critique = state["critique"].get<std::string>();

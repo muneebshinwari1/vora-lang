@@ -115,6 +115,8 @@ static void stage_resume() {
     invalid.resume_graph = {{"answer", {{"round", 11}, {"phase", "accepted"}, {"draft", "x"}, {"critique", keep_critique}}}};
     invalid.resume_calls = 20;
     fails([&] { vora::run(review_workflow(), "x", [](const auto&, const auto&) { return "bad"; }, invalid); });
+    invalid.resume_graph["answer"]["round"] = 4294967297ULL;
+    fails([&] { vora::run(review_workflow(), "x", [](const auto&, const auto&) { return "bad"; }, invalid); });
 }
 static void graph_parallel() {
     const auto workflow = vora::parse(R"VORA(workflow Parallel(input):
