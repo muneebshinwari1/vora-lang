@@ -16,7 +16,9 @@ on stable 0.4.0. No GitHub push or remote metadata update belongs to this phase.
   Resume preserves call reservations, accepted stages and exhausted rounds.
 - Plans expose conditions/review limits; timed traces add branch/round/verdict events.
 
-Human approval states and an interactive trace viewer are later milestones.
+This report records the original graph milestone. Subsequent local work adds
+an offline trace inspector and [human approval gates](human-approval.md); their
+new validation is recorded separately rather than implied by these older checks.
 
 ## Reproducible local checks
 

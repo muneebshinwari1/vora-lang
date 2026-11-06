@@ -1,5 +1,6 @@
 #pragma once
 #include "vora_parser.hpp"
+#include "vora_approval.hpp"
 #include <atomic>
 #include <chrono>
 #include <functional>
@@ -21,6 +22,8 @@ struct RunOptions {
     std::function<void(const std::map<std::string, std::string>&, int)> checkpoint{};
     nlohmann::json resume_graph = nlohmann::json::object();
     std::function<void(const std::map<std::string, std::string>&, int, const nlohmann::json&)> graph_checkpoint{};
+    nlohmann::json resume_approvals = nlohmann::json::object();
+    std::function<void(const std::map<std::string, std::string>&, int, const nlohmann::json&, const nlohmann::json&)> durable_checkpoint{};
 };
 struct RunResult { std::map<std::string, std::string> outputs; std::string result; nlohmann::json events; };
 class TransientError : public std::runtime_error { public: using std::runtime_error::runtime_error; };
@@ -29,6 +32,11 @@ class ExecutionError : public std::runtime_error {
 public:
     nlohmann::json events = nlohmann::json::array();
     explicit ExecutionError(const std::string& message) : std::runtime_error(message) {}
+};
+class WorkflowPaused : public std::runtime_error {
+public:
+    nlohmann::json events = nlohmann::json::array();
+    WorkflowPaused() : std::runtime_error("Workflow is awaiting human approval.") {}
 };
 
 inline bool has_text(const std::string& value) {
@@ -136,15 +144,23 @@ inline RunResult run(const Workflow& workflow, const std::string& input, Provide
             throw ExecutionError("Provider is required.");
         if (workflow.steps.empty() || workflow.steps.size() > 1024) throw ExecutionError("Workflow must contain 1..1024 steps.");
         std::set<std::string> names;
+        std::map<std::string, std::string> approval_gates;
         for (const auto& step : workflow.steps) {
             if (!names.insert(step.name).second || step.name == workflow.input_name)
                 throw ExecutionError("Duplicate step or input name.");
-            if (step.kind == "tool") {
+            if (step.kind == "approval") {
+                if (!step.agent.empty() || !has_text(step.prompt) || step.prompt.size() > 8192 || step.approval_source.empty() ||
+                    !step.condition.empty() || !step.verdict.empty() || !step.fallback.empty() || step.critique_output ||
+                    step.dependencies != std::vector<std::string>{step.approval_source}) throw ExecutionError("Invalid approval gate.");
+                approval_gates.emplace(step.name, step.approval_source);
+            } else if (!step.approval_source.empty()) throw ExecutionError("Unexpected approval source on ordinary step.");
+            else if (step.kind == "tool") {
                 if (!workflow.tools.count(step.agent) || !builtin_tools().count(workflow.tools.at(step.agent)) || !options.tool_executor)
                     throw ExecutionError("Tool executor or declaration is missing.");
                 (void)tool_arguments(workflow.tools.at(step.agent), step.prompt);
             } else if (step.kind != "agent" || !workflow.agents.count(step.agent)) throw ExecutionError("Unknown agent or step kind.");
         }
+        if (!approval_gates.empty() && !options.durable_checkpoint) throw ExecutionError("Approval workflows require a durable checkpoint callback.");
         if (!names.count(workflow.output)) throw ExecutionError("Undefined return step.");
         std::set<std::pair<std::string, std::string>> validated;
         for (const auto& rule : workflow.validations) {
@@ -160,8 +176,8 @@ inline RunResult run(const Workflow& workflow, const std::string& input, Provide
                 !repair_limits.emplace(repair.step, repair.max_attempts).second)
                 throw ExecutionError("Invalid or duplicate repair rule.");
             if (std::any_of(workflow.steps.begin(), workflow.steps.end(), [&](const Step& step) {
-                    return step.name == repair.step && step.kind == "tool"; }))
-                throw ExecutionError("Tool steps cannot have automatic repair.");
+                    return step.name == repair.step && step.kind != "agent"; }))
+                throw ExecutionError("Only agent steps can have automatic repair.");
             if (std::none_of(workflow.validations.begin(), workflow.validations.end(),
                              [&](const Validation& rule) { return rule.step == repair.step; }))
                 throw ExecutionError("Repair target has no validation rule.");
@@ -170,6 +186,10 @@ inline RunResult run(const Workflow& workflow, const std::string& input, Provide
         static const std::regex reference(R"(\{([A-Za-z_][A-Za-z0-9_]*)\})");
         for (const auto& step : workflow.steps) {
             std::set<std::string> refs;
+            if (step.kind == "approval") {
+                if (!names.count(step.approval_source)) throw ExecutionError("Undefined approval source.");
+                continue;
+            }
             for (std::sregex_iterator it(step.prompt.begin(), step.prompt.end(), reference), last; it != last; ++it)
                 if ((*it)[1].str() != workflow.input_name) refs.insert((*it)[1].str());
             if (step.critique_output) throw ExecutionError("Internal reviewer flags are not workflow steps.");
@@ -223,6 +243,14 @@ inline RunResult run(const Workflow& workflow, const std::string& input, Provide
             stage_minimum += 2 * round - (phase == "critique" ? 1 : 0);
         }
         std::map<std::string, std::string> outputs = options.resume_outputs;
+        auto approvals = options.resume_approvals;
+        validate_approvals(approval_gates, outputs, approvals);
+        for (const auto& entry : approvals.items()) {
+            if (entry.value()["status"] == "rejected") {
+                emit("approval_rejected", {{"step", entry.key()}, {"request_id", entry.value()["request_id"]}});
+                throw ExecutionError("Workflow rejected by operator; start a new job to reconsider.");
+            }
+        }
         if (calls < 0 || calls > options.max_calls || stage_minimum > calls)
             throw ExecutionError("Invalid checkpoint call count.");
         int completed_minimum = stage_minimum;
@@ -238,7 +266,8 @@ inline RunResult run(const Workflow& workflow, const std::string& input, Provide
             if (review_rules.count(entry.first)) {
                 if (!graph_state.contains(entry.first) || graph_state[entry.first]["phase"] != "accepted" || graph_state[entry.first]["draft"] != entry.second)
                     throw ExecutionError("Completed review checkpoint is not accepted.");
-            } else if (step->condition.empty()) ++completed_minimum;
+            } else if (step->kind == "approval") { /* zero-call approved alias validated above */ }
+            else if (step->condition.empty()) ++completed_minimum;
             else {
                 const auto& critique = outputs.at(step->condition);
                 if (!valid_critique(critique)) throw ExecutionError("Invalid conditional checkpoint critique.");
@@ -258,7 +287,7 @@ inline RunResult run(const Workflow& workflow, const std::string& input, Provide
         }
         size_t remaining_minimum = 0;
         for (const auto& step : workflow.steps) {
-            if (!pending.count(step.name) || !step.condition.empty()) continue;
+            if (!pending.count(step.name) || !step.condition.empty() || step.kind == "approval") continue;
             if (!review_rules.count(step.name)) ++remaining_minimum;
             else if (!graph_state.contains(step.name)) remaining_minimum += 2;
             else if (graph_state[step.name]["phase"] == "critique") ++remaining_minimum;
@@ -267,7 +296,8 @@ inline RunResult run(const Workflow& workflow, const std::string& input, Provide
         if (remaining_minimum > static_cast<size_t>(options.max_calls - calls))
             throw ExecutionError("Call limit is below remaining workflow minimum call count.");
         auto persist = [&] {
-            if (options.graph_checkpoint) options.graph_checkpoint(outputs, calls, graph_state);
+            if (options.durable_checkpoint) options.durable_checkpoint(outputs, calls, graph_state, approvals);
+            else if (options.graph_checkpoint) options.graph_checkpoint(outputs, calls, graph_state);
             else if (options.checkpoint) options.checkpoint(outputs, calls);
         };
         persist();
@@ -434,12 +464,36 @@ inline RunResult run(const Workflow& workflow, const std::string& input, Provide
             }
         };
         while (!pending.empty()) {
+            // Gate processing is a batch-boundary barrier: no worker is active here.
+            // Persist all newly ready requests before pausing; never launch work past a pending gate.
+            bool waiting = false, released = false;
+            for (const auto& step : workflow.steps) {
+                if (step.kind != "approval" || !pending.count(step.name) || !outputs.count(step.approval_source)) continue;
+                if (!approvals.contains(step.name)) {
+                    approvals[step.name] = {{"status", "pending"}, {"request_id", approval_id()},
+                        {"source", step.approval_source}, {"value", outputs.at(step.approval_source)},
+                        {"requested_at", approval_time()}, {"decided_at", ""}, {"by", ""}, {"reason", ""}};
+                }
+                const auto& record = approvals.at(step.name);
+                if (record["status"] == "pending") {
+                    waiting = true;
+                    emit("approval_requested", {{"step", step.name}, {"request_id", record["request_id"]}});
+                } else {
+                    const auto value = record["value"].get<std::string>();
+                    if (!validation_failures(workflow, step.name, value).empty()) throw ExecutionError("Approved output failed gate validation.");
+                    outputs[step.name] = value; pending.erase(step.name); released = true;
+                    emit("approval_released", {{"step", step.name}, {"request_id", record["request_id"]}});
+                }
+            }
+            if (waiting || released) persist();
+            if (waiting) throw WorkflowPaused();
+            if (released) continue; // Re-evaluate chained gates before scheduling agents.
             std::vector<std::pair<std::string, std::future<std::string>>> running;
             auto values = outputs;
             values[workflow.input_name] = input;
             for (const auto& step : workflow.steps) {
                 if (running.size() >= static_cast<size_t>(options.workers)) break;
-                if (!pending.count(step.name)) continue;
+                if (!pending.count(step.name) || step.kind == "approval") continue;
                 bool ready = true;
                 for (const auto& dep : step.dependencies) if (!outputs.count(dep)) ready = false;
                 if (!ready) continue;
@@ -495,6 +549,10 @@ inline RunResult run(const Workflow& workflow, const std::string& input, Provide
         }
         emit("workflow_completed", {{"calls", calls}});
         return {outputs, outputs.at(workflow.output), events};
+    } catch (WorkflowPaused& pause) {
+        emit("workflow_paused", {{"calls", calls}, {"reason", "human_approval"}});
+        pause.events = events;
+        throw;
     } catch (ExecutionError& error) {
         emit("workflow_failed", {{"calls", calls}});
         error.events = events;

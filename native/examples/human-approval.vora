@@ -1,0 +1,7 @@
+workflow HumanApproval(input):
+    agent writer = "Write one short notice following the task. Return only the notice."
+    agent editor = "Polish the approved notice for clarity without adding facts. Return only the notice."
+    draft = writer("Task: {input}")
+    approval approved = draft "Review the exact draft for accuracy and suitability before the editor runs."
+    final = editor("Approved draft: {approved}")
+    return final

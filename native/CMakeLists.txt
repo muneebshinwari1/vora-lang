@@ -42,12 +42,14 @@ add_executable(limits_tests tests/limits_tests.cpp)
 add_test(NAME limits COMMAND limits_tests)
 add_executable(graph_tests tests/graph_tests.cpp)
 add_test(NAME graphs COMMAND graph_tests)
-set_tests_properties(parser runtime validation state tools limits graphs PROPERTIES TIMEOUT 60)
+add_executable(approval_tests tests/approval_tests.cpp)
+add_test(NAME approvals COMMAND approval_tests)
+set_tests_properties(parser runtime validation state tools limits graphs approvals PROPERTIES TIMEOUT 60)
 
 # Runtime remains C++ only. Python is optional developer fixture tooling.
 find_package(Python3 COMPONENTS Interpreter QUIET)
 if(Python3_Interpreter_FOUND)
-  foreach(fixture http state tools graphs)
+  foreach(fixture http state tools graphs approval)
     add_test(NAME cli_${fixture}
       COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_${fixture}_cli.py)
     set_tests_properties(cli_${fixture} PROPERTIES TIMEOUT 120
@@ -57,18 +59,18 @@ endif()
 
 include(GNUInstallDirs)
 install(TARGETS vora RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
-install(FILES quickstart-fast.vora review.vora examples/guarded-notice.vora examples/parallel-review.vora examples/workspace-audit.vora examples/file-stats.vora examples/bounded-review.vora examples/conditional-edit.vora examples/parallel-research.vora
+install(FILES quickstart-fast.vora review.vora examples/guarded-notice.vora examples/parallel-review.vora examples/workspace-audit.vora examples/file-stats.vora examples/bounded-review.vora examples/conditional-edit.vora examples/parallel-research.vora examples/human-approval.vora
         DESTINATION ${CMAKE_INSTALL_DATADIR}/vora/examples)
 install(FILES ../LICENSE ../SPEC.md README.md DESTINATION ${CMAKE_INSTALL_DATADIR}/vora)
 install(FILES ../SECURITY.md DESTINATION ${CMAKE_INSTALL_DATADIR}/vora)
-install(FILES ../docs/compatibility.md ../docs/production-readiness.md ../docs/agent-graphs.md
+install(FILES ../docs/compatibility.md ../docs/production-readiness.md ../docs/agent-graphs.md ../docs/human-approval.md
         DESTINATION ${CMAKE_INSTALL_DATADIR}/vora/docs)
 install(FILES vendor/nlohmann/LICENSE.MIT
         DESTINATION ${CMAKE_INSTALL_DATADIR}/vora/licenses RENAME nlohmann-json-LICENSE.MIT)
 install(DIRECTORY docs DESTINATION ${CMAKE_INSTALL_DATADIR}/vora FILES_MATCHING PATTERN "*.md")
 set(CPACK_PACKAGE_NAME "vora")
 set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
-set(CPACK_PACKAGE_VERSION "0.5.0-dev.1")
+set(CPACK_PACKAGE_VERSION "0.5.0-dev.2")
 set(CPACK_PACKAGE_VENDOR "Vora contributors")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Native C++ agent workflow language")
 set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/../LICENSE")

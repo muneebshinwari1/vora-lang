@@ -30,6 +30,7 @@ struct Step {
     std::string kind = "agent";
     std::string condition{}, verdict{}, fallback{};
     bool critique_output = false; // Internal reviewer call, never source-controlled.
+    std::string approval_source{};
 };
 
 // Declares response structure checks only; it does not establish factual truth.
@@ -170,6 +171,8 @@ inline Workflow parse(const std::string& source) {
         R"(^([A-Za-z_][A-Za-z0-9_]*) = ([A-Za-z_][A-Za-z0-9_]*)\((.+)\) when ([A-Za-z_][A-Za-z0-9_]*) verdict ("keep"|"revise") else ([A-Za-z_][A-Za-z0-9_]*)$)");
     static const std::regex review_pattern(
         R"(^review ([A-Za-z_][A-Za-z0-9_]*) with ([A-Za-z_][A-Za-z0-9_]*) max ([0-9]{1,2})$)");
+    static const std::regex approval_pattern(
+        R"(^approval ([A-Za-z_][A-Za-z0-9_]*) = ([A-Za-z_][A-Za-z0-9_]*) (.+)$)");
 
     std::vector<std::pair<std::size_t, std::string>> lines;
     std::istringstream input(source);
@@ -217,6 +220,13 @@ inline Workflow parse(const std::string& source) {
             const auto builtin = parser_detail::string_value(match[2].str(), number);
             if (!builtin_tools().count(builtin)) fail(number, "unknown builtin tool '" + builtin + "'");
             workflow.tools.emplace(symbol, builtin);
+        } else if (std::regex_match(line, match, approval_pattern)) {
+            const auto symbol = match[1].str();
+            if (!symbols.insert(symbol).second) fail(number, "duplicate approval name");
+            Step step{symbol, "", parser_detail::string_value(match[3].str(), number), {}, "approval"};
+            step.approval_source = match[2].str();
+            workflow.steps.push_back(std::move(step));
+            step_lines.emplace(symbol, number);
         } else if (std::regex_match(line, match, conditional_pattern)) {
             const auto symbol = match[1].str();
             if (!symbols.insert(symbol).second) fail(number, "duplicate name '" + symbol + "'");
@@ -296,6 +306,13 @@ inline Workflow parse(const std::string& source) {
     }
     for (auto& step : workflow.steps) {
         const auto number = step_lines.at(step.name);
+        if (step.kind == "approval") {
+            if (!step_lines.count(step.approval_source)) fail(number, "approval source must be a defined step");
+            if (std::any_of(workflow.repairs.begin(), workflow.repairs.end(), [&](const Repair& rule) { return rule.step == step.name; }))
+                fail(number, "approval gates cannot have automatic repair");
+            step.dependencies = {step.approval_source};
+            continue; // Approval instructions are literal, never interpolated.
+        }
         if (workflow.tools.count(step.agent)) {
             step.kind = "tool";
             try { (void)tool_arguments(workflow.tools.at(step.agent), step.prompt); }
@@ -388,6 +405,7 @@ inline nlohmann::json plan(const Workflow& workflow) {
     for (const auto& step : workflow.steps) {
         nlohmann::json item = {{"name", step.name}, {"agent", step.agent}, {"dependencies", step.dependencies}};
         if (step.kind == "tool") { item["kind"] = "tool"; item["builtin"] = workflow.tools.at(step.agent); }
+        if (step.kind == "approval") { item["kind"] = "approval"; item["source"] = step.approval_source; item["instruction"] = step.prompt; }
         if (!step.condition.empty()) item["condition"] = {{"step", step.condition}, {"verdict", step.verdict}, {"fallback", step.fallback}};
         steps.push_back(std::move(item));
     }
@@ -416,7 +434,7 @@ inline nlohmann::json plan(const Workflow& workflow) {
     }
     size_t minimum = 0;
     for (const auto& step : workflow.steps) {
-        if (!step.condition.empty()) continue;
+        if (!step.condition.empty() || step.kind == "approval") continue;
         minimum += 1 + static_cast<size_t>(std::any_of(workflow.reviews.begin(), workflow.reviews.end(), [&](const Review& review) { return review.step == step.name; }));
     }
     result["minimum_calls"] = minimum;

@@ -13,6 +13,9 @@ Production hardening is tracked against an explicit [deployment contract and rel
 **Local 0.5 development:** the native source adds conditional calls and bounded
 writer–critic review loops with durable stage recovery. See [agent graphs](docs/agent-graphs.md).
 Local evidence is recorded in [0.5 verification](docs/graphs-0.5-validation.md).
+Native [human approval gates](docs/human-approval.md) now support durable pause,
+inspection, explicit approve/reject decisions and resume under the local operator contract.
+See the [approval verification report](docs/human-approval-validation.md) for tested behavior and remaining release gates.
 The published installers and Docker command below still install stable 0.4.0;
 they do not include the local development features.
 

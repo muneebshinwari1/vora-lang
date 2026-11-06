@@ -2,6 +2,11 @@
 
 ## 0.5.0-dev — local, unreleased
 
+- Add native human approval gates with durable pending/approved/rejected state,
+  exact output snapshots, unique request IDs, operator labels/reasons and explicit resume.
+- Add approvals/decide CLI commands, terminal rejection, version-2 approval checkpoints,
+  batch-boundary pause, zero-call release and process-restart/lock/write-failure tests.
+
 - Add a self-contained offline HTML trace inspector with search, event/failure filters,
   bounded input, escaped text rendering and exclusive output creation.
 

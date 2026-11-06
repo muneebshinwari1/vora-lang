@@ -15,7 +15,7 @@ implementation is the reference implementation.
 ```ebnf
 program      = header, newline, { statement, newline } ;
 header       = "workflow", name, "(", name, "):" ;
-statement    = agent | tool | step | conditional | review | returns | validate | require | forbid | repair ;
+statement    = agent | tool | step | conditional | review | approval | returns | validate | require | forbid | repair ;
 agent        = "agent", name, "=", string ;
 tool         = "tool", name, "=", string ;
 step         = name, "=", name, "(", ( string | json_object ), ")" ;
@@ -27,6 +27,7 @@ repair       = "repair", name, "max", integer ;
 conditional  = name, "=", name, "(", string, ")", "when", name,
                "verdict", ( '"keep"' | '"revise"' ), "else", name ;
 review       = "review", name, "with", name, "max", integer ;
+approval     = "approval", name, "=", name, string ;
 ```
 
 Step prompt placeholders such as `{input}` or `{draft}` reference the workflow
@@ -80,6 +81,14 @@ fails closed. Calls, retries and repairs share the global budget. Completed stag
 are durable under the CLI graph checkpoint contract; unfinished calls can repeat
 with previously reserved budget retained. See [full graph semantics and recovery](docs/agent-graphs.md).
 These are native-only development extensions; the stable 0.4 grammar excludes them.
+
+An approval node names a source step and literal operator instruction. It costs
+zero calls and returns the exact saved source only after explicit local approval.
+Ready pending gates pause the whole scheduler at a batch boundary; rejection is
+terminal for the job. Gates participate in cycle/name validation and may have
+output checks, but cannot repair or review. The CLI requires durable version-2
+state for approval workflows; ordinary workflows retain version 1. Gate decisions
+are operator state, never model outputs. See [approval semantics](docs/human-approval.md).
 
 ## Providers and portability
 

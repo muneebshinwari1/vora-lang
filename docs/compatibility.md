@@ -44,3 +44,8 @@ consistent graph-stage checkpoint state. See [agent graphs](agent-graphs.md).
 0.4 cannot parse these workflows. Preserve the matching development binary and
 backups for recovery; do not copy loop state into a 0.4 job or edit its identity.
 Public installers continue to target 0.4.0 until a separate tested release.
+
+Workflows containing human approval gates use checkpoint version 2, with approval
+records bound to saved source values and gate identity. Plain 0.4/0.5 workflows
+continue to use version 1. Version 2 is development-only: retain matching binaries
+and backups and do not downgrade/rewrite its records. See [human approval](human-approval.md).

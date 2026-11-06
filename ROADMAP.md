@@ -13,6 +13,8 @@ Vora is an experimental native agent-workflow language. These priorities are not
 - Conditional agent calls on structurally validated keep/revise verdicts.
 - Bounded writer–critic loops, shared budgets and durable completed-stage recovery.
 - Parallel branch/join examples, graph traces and crash/failure regressions.
+- Durable local human approvals with explicit decisions and restart recovery.
+- Offline HTML trace inspection with search/event filters.
 - Local development only; public distribution stays on stable 0.4.0 until promotion.
 
 ## Next priorities
@@ -21,7 +23,7 @@ Vora is an experimental native agent-workflow language. These priorities are not
 2. Improve diagnostics and examples for first-time authors and contributors.
 3. Evaluate model quality and authoring effort against reproducible baselines.
 4. Validate the 0.5 candidate on Linux/macOS and under sanitizers before release.
-5. Add explicit human approval states and a trace viewer in a later milestone.
+5. Evaluate authenticated review services and a live approval inbox as separate future work.
 
 ## Contribution ideas
 

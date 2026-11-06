@@ -17,17 +17,24 @@ with tempfile.TemporaryDirectory(prefix='vora-package-') as tmp:
     binaries=[b for b in binaries if b.is_file() and b.parent.name=='bin']
     if len(binaries)!=1:raise RuntimeError('Expected one installed binary')
     exe=binaries[0];installed=exe.parent.parent
-    def cli(*args):
+    def cli(*args, expected=0):
         r=subprocess.run([str(exe),*map(str,args)],capture_output=True,text=True,timeout=30,cwd=tmp)
-        if r.returncode:raise RuntimeError(r.stderr)
+        if r.returncode!=expected:raise RuntimeError(r.stderr)
         return r
     if 'Vora 0.5.0-dev -' not in cli('--help').stdout:raise RuntimeError('Wrong package version')
     example=installed/'share/vora/examples/quickstart-fast.vora'
     cli('check',example);cli('plan',example)
-    for name in ('bounded-review.vora','conditional-edit.vora','parallel-research.vora'):
+    for name in ('bounded-review.vora','conditional-edit.vora','parallel-research.vora','human-approval.vora'):
         cli('check',installed/'share/vora/examples'/name)
     cli('run',installed/'share/vora/examples/parallel-research.vora','--provider','demo','--input','package graph smoke','--workers','2')
     if not (installed/'share/vora/docs/agent-graphs.md').is_file():raise RuntimeError('Missing graph deployment guide')
+    if not (installed/'share/vora/docs/human-approval.md').is_file():raise RuntimeError('Missing approval operator guide')
+    human=installed/'share/vora/examples/human-approval.vora';human_state=root/'human.json'
+    cli('run',human,'--provider','demo','--input','approval package smoke','--checkpoint',human_state,expected=2)
+    request=json.loads(cli('approvals',human_state).stdout)['requests'][0]
+    cli('decide',human_state,'--step',request['step'],'--request',request['request_id'],'--decision','approve','--by','package-test','--reason','Reviewed fixture')
+    cli('run',human,'--provider','demo','--input','approval package smoke','--resume',human_state)
+    if json.loads(human_state.read_text())['calls']!=2:raise RuntimeError('Approval gate changed call accounting')
     checkpoint=root/'state.json';output=root/'output.json';trace=root/'trace.json'
     cli('run',example,'--provider','demo','--input','package smoke','--checkpoint',checkpoint,'--output',output)
     first=json.loads(output.read_text())['result']

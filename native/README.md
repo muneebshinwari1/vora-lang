@@ -4,6 +4,10 @@ The working source adds [conditional calls and bounded review graphs](../docs/ag
 Published stable packages remain 0.4.0. Use a separate build/state directory for
 development; 0.5 features have not been promoted to production support.
 
+[Human approval gates](../docs/human-approval.md) add durable pause, operator
+inspection/decisions and recovery. Approval workflows require a checkpoint and
+exit 2 while waiting. Use `vora approvals` and `vora decide`, then explicit resume.
+
 ## Start here
 
 **Build the engine and install the local model artifacts first** (see [model setup](docs/model-setup.md)); source clones contain no executables or weights. Then double-click `Run Vora.cmd` in this folder. Enter a writing or planning task. It starts the separately installed local model if necessary, then runs three agents: writer → critic → editor. The final answer appears in the window; results and traces are saved under `outputs/`.

@@ -124,6 +124,7 @@ inline nlohmann::json workflow_identity(const Workflow& workflow) {
         nlohmann::json item = {{"name", step.name}, {"agent", step.agent},
             {"prompt", step.prompt}, {"dependencies", step.dependencies}, {"kind", step.kind}};
         if (!step.condition.empty()) item["condition"] = {{"step", step.condition}, {"verdict", step.verdict}, {"fallback", step.fallback}};
+        if (step.kind == "approval") item["approval_source"] = step.approval_source;
         result["steps"].push_back(std::move(item));
     }
     if (!workflow.reviews.empty()) {
@@ -172,7 +173,7 @@ inline std::string bounded_text(const std::string& text, size_t limit) {
 inline void remember(nlohmann::json& memory, const Workflow& workflow, const std::string& input,
                      const std::map<std::string, std::string>& outputs) {
     for (const auto& step : workflow.steps) {
-        if (step.kind == "tool") continue;
+        if (step.kind != "agent") continue;
         // An alias is not a response produced by the skipped agent.
         if (!step.condition.empty() && nlohmann::json::parse(outputs.at(step.condition)).at("verdict") != step.verdict) continue;
         auto& item = memory["agents"][step.agent];

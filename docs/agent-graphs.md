@@ -133,8 +133,9 @@ limited to 8 MiB/50000 events. Output creation refuses existing files. Event dat
 is escaped and rendered as text, including provider-derived strings. The viewer
 does not execute workflows or supply approvals. Keep exported metadata private.
 
-Human approval with explicit durable pending/approved states and an interactive
-live trace viewer remain separate work. They are not provided by a critic verdict.
+[Human approval gates](human-approval.md) now provide durable pending/approved/rejected
+states and operator CLI decisions. They are separate from critic verdicts.
+An authenticated remote review service and live trace viewer remain future work.
 Before public 0.5 promotion, validate the exact candidate on Linux/macOS and under
 sanitizers, run an independent review and longer real-model deployment tests,
 and update distribution URLs/hashes only after publishing immutable tested assets.
