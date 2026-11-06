@@ -123,8 +123,18 @@ forced cancellation of arbitrary embedded providers.
 
 ## Further milestones
 
+### Offline trace inspector (local development)
+
+Run `python scripts/trace_viewer.py TRACE.json VIEW.html`, then open VIEW.html in
+a browser. Python is export tooling only. The generated file is self-contained,
+makes no network requests and supports event/search/failure filters. It displays
+up to 1000 matching rows at a time; narrow filters for large traces. Inputs are
+limited to 8 MiB/50000 events. Output creation refuses existing files. Event data
+is escaped and rendered as text, including provider-derived strings. The viewer
+does not execute workflows or supply approvals. Keep exported metadata private.
+
 Human approval with explicit durable pending/approved states and an interactive
-trace viewer remain separate work. They are not provided by a critic verdict.
+live trace viewer remain separate work. They are not provided by a critic verdict.
 Before public 0.5 promotion, validate the exact candidate on Linux/macOS and under
 sanitizers, run an independent review and longer real-model deployment tests,
 and update distribution URLs/hashes only after publishing immutable tested assets.

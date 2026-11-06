@@ -2,6 +2,9 @@
 
 ## 0.5.0-dev — local, unreleased
 
+- Add a self-contained offline HTML trace inspector with search, event/failure filters,
+  bounded input, escaped text rendering and exclusive output creation.
+
 - Add conditional agent calls using validated critique verdicts and exact fallback outputs.
 - Add writer–critic loops capped at 1..10 rounds; keep releases output, exhaustion fails.
 - Save completed loop stages for resume while retaining every call reservation.
