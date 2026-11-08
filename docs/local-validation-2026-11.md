@@ -98,4 +98,7 @@ is a proposal, not an implemented service.
 
 macOS execution, deployment-specific sustained load, authenticated-service
 implementation and exact-candidate public CI/release promotion remain pending.
-Public packages remain unchanged while this branch is held locally.
+These results preceded publication of the development source. The user authorized
+pushing it on November 8; stable release packages remain unchanged. GitHub CI
+includes a macOS build, CTest and clean archive verification; its actual result
+must be checked separately from this local evidence.

@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.5.0-dev — local, unreleased
+## 0.5.0-dev — unreleased
 
 - Add a reproducible Docker sanitizer build stage and Debian-compatible safe
   archive verification; record Linux packaging and scoped agent review evidence.
