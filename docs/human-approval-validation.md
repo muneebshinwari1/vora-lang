@@ -85,7 +85,9 @@ Operator labels are self-reported. Local file writers can rewrite state; the CLI
 does not prove someone actually read it. Scope excludes remote reviewers,
 authentication/RBAC, expiry, signatures, live inboxes and exactly-once side effects.
 
-Linux/macOS, sanitizers and long-running deployment tests for this change have not
-run. No independent security review was performed in this milestone. Those checks,
+At the time of this initial report, Linux/macOS, sanitizers and long-running
+deployment tests had not run and no independent security review was complete.
+See the [November follow-up](local-validation-2026-11.md) for subsequent Linux
+and scoped independent agent review evidence. Remaining checks,
 plus exact-candidate public CI/package verification, remain promotion gates.
 The earlier 0.4 CI and soak results are not validation of this new feature.

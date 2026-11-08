@@ -2,6 +2,8 @@
 
 ## 0.5.0-dev — local, unreleased
 
+- Add a reproducible Docker sanitizer build stage and Debian-compatible safe
+  archive verification; record Linux packaging and scoped agent review evidence.
 - Add native human approval gates with durable pending/approved/rejected state,
   exact output snapshots, unique request IDs, operator labels/reasons and explicit resume.
 - Add approvals/decide CLI commands, terminal rejection, version-2 approval checkpoints,

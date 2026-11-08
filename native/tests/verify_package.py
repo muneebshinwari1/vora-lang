@@ -1,5 +1,5 @@
 """Verify a generated archive in a fresh installation directory."""
-import argparse,glob,json,os,pathlib,subprocess,tarfile,tempfile,zipfile
+import argparse,glob,json,os,pathlib,shutil,subprocess,tarfile,tempfile,zipfile
 p=argparse.ArgumentParser();p.add_argument('pattern');a=p.parse_args()
 archives=glob.glob(a.pattern)
 if len(archives)!=1:raise RuntimeError('Expected exactly one generated archive')
@@ -12,7 +12,23 @@ with tempfile.TemporaryDirectory(prefix='vora-package-') as tmp:
                 if not (root/name).resolve().is_relative_to(root):raise RuntimeError('Unsafe archive path')
             z.extractall(root)
     else:
-        with tarfile.open(archive) as t:t.extractall(root,filter='data')
+        # Accept only ordinary files/directories, including on Python versions
+        # without tarfile extraction filters. Never materialize archive links.
+        with tarfile.open(archive) as t:
+            members=t.getmembers()
+            for member in members:
+                destination=(root/member.name).resolve()
+                if not destination.is_relative_to(root) or not (member.isfile() or member.isdir()):
+                    raise RuntimeError('Unsafe archive member')
+            for member in members:
+                destination=root/member.name
+                if member.isdir():
+                    destination.mkdir(parents=True,exist_ok=True)
+                else:
+                    destination.parent.mkdir(parents=True,exist_ok=True)
+                    with t.extractfile(member) as source,destination.open('wb') as target:
+                        shutil.copyfileobj(source,target)
+                    destination.chmod(member.mode & 0o755)
     binaries=list(root.rglob('vora.exe' if os.name=='nt' else 'vora'))
     binaries=[b for b in binaries if b.is_file() and b.parent.name=='bin']
     if len(binaries)!=1:raise RuntimeError('Expected one installed binary')

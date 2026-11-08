@@ -16,6 +16,8 @@ Local evidence is recorded in [0.5 verification](docs/graphs-0.5-validation.md).
 Native [human approval gates](docs/human-approval.md) now support durable pause,
 inspection, explicit approve/reject decisions and resume under the local operator contract.
 See the [approval verification report](docs/human-approval-validation.md) for tested behavior and remaining release gates.
+The [November local validation follow-up](docs/local-validation-2026-11.md) records
+Linux packaging and the scoped independent agent review.
 The published installers and Docker command below still install stable 0.4.0;
 they do not include the local development features.
 

@@ -9,13 +9,18 @@ RUN cmake -S native -B /build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=
     && ctest --test-dir /build --output-on-failure \
     && cmake --install /build
 
-FROM build AS sanitizers
-RUN apt-get update && apt-get install -y --no-install-recommends clang \
+FROM build AS sanitizer-build
+RUN apt-get update && apt-get install -y --no-install-recommends clang libclang-rt-14-dev \
     && rm -rf /var/lib/apt/lists/*
+# This diagnostic image uses non-PIE executables: Clang 14 ASan also crashed
+# on empty-main PIE binaries on the tested WSL host. Release flags stay intact.
 RUN cmake -S native -B /sanitizers -DCMAKE_BUILD_TYPE=Debug \
         -DCMAKE_CXX_COMPILER=clang++ -DVORA_SANITIZERS=ON \
-    && cmake --build /sanitizers --parallel 2 \
-    && ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
+        -DCMAKE_CXX_FLAGS=-fno-pie -DCMAKE_EXE_LINKER_FLAGS=-no-pie \
+    && cmake --build /sanitizers --parallel 2
+
+FROM sanitizer-build AS sanitizers
+RUN ASAN_OPTIONS=detect_leaks=1:halt_on_error=1 UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
        ctest --test-dir /sanitizers --output-on-failure
 
 FROM debian:bookworm-slim
